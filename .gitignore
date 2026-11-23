@@ -10,3 +10,4 @@ keystore/
 *.jks
 *.keystore
 signing.properties
+.claude/worktrees/
