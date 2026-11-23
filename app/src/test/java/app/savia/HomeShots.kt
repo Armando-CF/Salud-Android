@@ -29,4 +29,26 @@ class HomeShots : ScreenshotBase() {
         DemoData.seed()
         shotWhen("more", "Alex") { MoreScreen(rememberNavController()) }
     }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h1300dp-xhdpi")
+    fun homeFamily() {
+        DemoData.seedFamily()
+        shotWhen("home_family", "Tu familia y mascotas") { HomeScreen(rememberNavController()) }
+    }
+
+    @Test
+    @Config(sdk = [35], qualifiers = "w411dp-h1500dp-xhdpi")
+    fun homePet() {
+        val (_, dog) = DemoData.seedFamily()
+        Savia.switchTo(dog)
+        shotWhen("home_pet", "Síntomas recientes") { HomeScreen(rememberNavController()) }
+    }
+
+    @Test
+    fun morePet() {
+        val (_, dog) = DemoData.seedFamily()
+        Savia.switchTo(dog)
+        shotWhen("more_pet", "Vacunas y desparasitación") { MoreScreen(rememberNavController()) }
+    }
 }
