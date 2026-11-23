@@ -28,7 +28,7 @@ describe('peso de mascotas y personas', () => {
 
   it('el peso de personas conserva un decimal en kilos', () => {
     expect(MeasureRefs.weightText(72.5, false)).toBe('72.5 kg')
-    expect(MeasureRefs.weightText(0.35, false)).toBe('0.3 kg') // nunca en gramos
+    expect(MeasureRefs.weightText(0.35, false)).toBe('0.4 kg') // nunca en gramos
     expect(MeasureRefs.weightParts(72.5, false)).toEqual(['72.5', 'kg'])
     expect(MeasureRefs.weightDelta(0.4, false)).toBe('+0.4 kg')
   })

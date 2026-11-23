@@ -108,7 +108,9 @@ export const Fmt = {
   isoDateTime: (ms: number): string => `${epochDayToIso(millisToEpochDay(ms))} ${Fmt.time(ms)}`,
   /** Número con hasta `decimals` decimales, sin ceros sobrantes: 72.50 → "72.5", 80.0 → "80". */
   num(value: number, decimals = 1): string {
-    const s = value.toFixed(decimals)
+    // Redondeo "mitad hacia arriba" como en la app de Android (0.35 → "0.4"), sin los empates binarios de toFixed.
+    const f = 10 ** decimals
+    const s = (Math.round(Number((Math.abs(value) * f).toPrecision(12))) / f * Math.sign(value || 1)).toFixed(decimals)
     return s.includes('.') ? s.replace(/0+$/, '').replace(/\.$/, '') : s
   },
   /** Con signo: "+1.2" / "−0.8" / "0". */

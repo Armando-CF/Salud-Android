@@ -472,7 +472,7 @@ export function Sheet(props: { open: boolean; onClose: () => void; title?: strin
 export function Dialog(props: { open: boolean; onClose: () => void; title: string; children: ReactNode; actions?: ReactNode }) {
   if (!props.open) return null
   return createPortal(
-    <div className="overlay center" onClick={(e) => { if (e.target === e.currentTarget) props.onClose() }}>
+    <div className="overlay middle" onClick={(e) => { if (e.target === e.currentTarget) props.onClose() }}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={props.title}>
         <h2>{props.title}</h2>
         {props.children}
