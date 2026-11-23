@@ -40,7 +40,7 @@ object DemoData {
         symptoms.forEachIndexed { i, (ago, name, inten) ->
             db.symptoms().insert(
                 SymptomEntry(
-                    timestamp = epochDayToMillis(t - ago, 9 * 60 + i * 37 % 600), name = name, intensity = inten,
+                    timestamp = minOf(epochDayToMillis(t - ago, 9 * 60 + i * 37 % 600), System.currentTimeMillis() - 600_000L), name = name, intensity = inten,
                     regionId = if (name == "Dolor abdominal") "abd_fosa_iliaca_der" else null,
                     regionLabel = if (name == "Dolor abdominal") "Fosa ilíaca derecha" else null,
                     durationMin = if (i % 2 == 0) 90 else null,

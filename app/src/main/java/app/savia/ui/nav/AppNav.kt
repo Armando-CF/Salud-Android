@@ -23,7 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.NavHostController
+import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -67,7 +67,7 @@ private fun tabs(cycleEnabled: Boolean): List<Tab> = listOf(
 )
 
 /** Navega a una pestaña de primer nivel conservando el estado de las demás. */
-fun NavHostController.navigateTab(route: String) {
+fun NavController.navigateTab(route: String) {
     navigate(route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true

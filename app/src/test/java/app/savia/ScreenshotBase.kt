@@ -3,6 +3,7 @@ package app.savia
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.test.core.app.ApplicationProvider
 import app.savia.data.SaviaDb
@@ -39,6 +40,18 @@ abstract class ScreenshotBase {
     fun shot(name: String, dark: Boolean = false, content: @Composable () -> Unit) {
         compose.setContent {
             SaviaTheme(if (dark) "dark" else "light") { Surface { content() } }
+        }
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("build/shots/$name.png")
+    }
+
+    /** Como [shot], pero espera a que aparezca [waitText] (p. ej. datos que llegan por Flow de Room) antes de capturar. */
+    fun shotWhen(name: String, waitText: String, dark: Boolean = false, content: @Composable () -> Unit) {
+        compose.setContent {
+            SaviaTheme(if (dark) "dark" else "light") { Surface { content() } }
+        }
+        compose.waitUntil(15_000) {
+            compose.onAllNodesWithText(waitText, substring = true).fetchSemanticsNodes().isNotEmpty()
         }
         compose.waitForIdle()
         compose.onRoot().captureRoboImage("build/shots/$name.png")
