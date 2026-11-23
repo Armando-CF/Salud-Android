@@ -7,6 +7,11 @@ Está pensada para usarse durante muchos años y por toda la familia: maneja **v
 —personas y mascotas—, cada uno con su propio historial separado. El seguimiento del ciclo
 menstrual es un módulo que se activa o desactiva por perfil.
 
+Hay dos versiones con las mismas funciones:
+
+- **Android** (este proyecto Gradle, carpeta `app/`).
+- **Web / iPhone** (PWA instalable desde Safari, carpeta [`web/`](web/README.md), publicable en GitHub Pages).
+
 ## Qué incluye
 
 | Módulo | Qué hace |
