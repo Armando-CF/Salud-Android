@@ -66,15 +66,25 @@ class ProfileStore(context: Context) {
         return if (1 in list) list else listOf(1) + list
     }
 
-    /** Reserva un id nuevo (nunca se reutilizan) y lo agrega a la lista. */
+    /** Reserva un id nuevo (nunca se reutilizan) SIN publicarlo todavía en la lista. */
     @Synchronized
-    fun add(): Int {
+    fun reserve(): Int {
         val next = maxOf(sp.getInt("next", 2), (_ids.value.maxOrNull() ?: 1) + 1)
-        val list = _ids.value + next
-        sp.edit().putInt("next", next + 1).putString("ids", list.joinToString(",")).commit()
-        _ids.value = list
+        sp.edit().putInt("next", next + 1).commit()
         return next
     }
+
+    /** Publica en la lista un id reservado (cuando su base ya tiene la ficha guardada). */
+    @Synchronized
+    fun publish(id: Int) {
+        if (id in _ids.value) return
+        val list = _ids.value + id
+        sp.edit().putString("ids", list.joinToString(",")).commit()
+        _ids.value = list
+    }
+
+    /** Reserva y publica un id en un solo paso. */
+    fun add(): Int = reserve().also { publish(it) }
 
     @Synchronized
     fun remove(id: Int) {

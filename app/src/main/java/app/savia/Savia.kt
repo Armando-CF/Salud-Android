@@ -149,11 +149,13 @@ object Savia {
      * @param setup ajustes iniciales del perfil (p. ej. activar el ciclo).
      */
     suspend fun createProfile(profile: Profile, setup: (Prefs) -> Unit = {}): Int {
-        val id = profiles.add()
+        // Primero se guarda la ficha y hasta el final se publica el id: así nadie ve un perfil a medio crear.
+        val id = profiles.reserve()
         prefsFor(id).clearProfileScoped()
         dbFor(id).profile().save(profile.copy(id = 1))
         setup(prefsFor(id))
         ProfileInfo.of(id, profile).let { infoById[id] = it; profiles.cacheInfo(it) }
+        profiles.publish(id)
         return id
     }
 
