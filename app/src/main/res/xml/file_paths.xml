@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- cacheDir/exports: archivos exportados para compartir -->
+    <cache-path name="exports" path="exports/" />
+    <!-- filesDir/attachments: adjuntos de estudios -->
+    <files-path name="attachments" path="attachments/" />
+</paths>
