@@ -8,7 +8,8 @@ import {
 import { AVATAR_COLORS, PetSpecies } from '../../data/catalogs'
 import { dbFor } from '../../data/db'
 import { getSetting, usePref } from '../../data/prefs'
-import { activateProfile, allProfiles, displayName, isPet as infoIsPet, profileSubtitle, useActive, useProfileRow, useProfiles } from '../../data/profiles'
+import { activateProfile, allProfiles, displayName, isPet as infoIsPet, profileSubtitle, useActive, useProfileRow } from '../../data/profiles'
+import { useProfileList } from '../profile'
 import type { DailyLog, Profile, ProfileInfo } from '../../data/types'
 import { Fmt, millisToEpochDay, nowMillis, today } from '../../lib/dates'
 import { isIos, isStandalone } from '../../lib/files'
@@ -57,7 +58,7 @@ export function HomePage() {
   const { info, db, isPet } = useActive()
   const t = today()
   const profile = useProfileRow()
-  const profiles = useProfiles()
+  const profiles = useProfileList()
   const [cycleEnabled] = usePref('cycleEnabled')
   const symptoms = useLiveQuery(() => db.symptoms.orderBy('timestamp').reverse().limit(3).toArray(), [db]) ?? []
   const weights = useLiveQuery(() => db.measurements.where('type').equals('weight').sortBy('timestamp'), [db]) ?? []
@@ -287,7 +288,7 @@ export function MorePage() {
   const nav = useNavigate()
   const { info, isPet } = useActive()
   const profile = useProfileRow()
-  const profiles = useProfiles()
+  const profiles = useProfileList()
   const [cycleEnabled] = usePref('cycleEnabled')
   return (
     <Page title="Más">

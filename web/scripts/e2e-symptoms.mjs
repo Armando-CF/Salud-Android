@@ -165,6 +165,7 @@ report(await withApp({ seed: 'person' }, async ({ page, go, shot, auditInputs })
   await page.getByText('Hace 46 días', { exact: true }).waitFor()
   await page.getByLabel('Día siguiente').click()
   await page.getByText('Hace 45 días', { exact: true }).waitFor()
+  await page.getByText('2 vasos').first().waitFor({ timeout: 4000 }).catch(() => {})
   check(await visible(page, '2 vasos'), 'al volver al día se recupera lo guardado')
   const count = logs.length
   await page.getByRole('button', { name: 'Borrar este día' }).click()
