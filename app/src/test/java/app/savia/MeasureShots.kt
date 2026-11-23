@@ -24,17 +24,7 @@ import org.robolectric.annotation.Config
 /** Capturas del módulo de mediciones (app/build/shots/measure_*.png). */
 class MeasureShots : ScreenshotBase() {
 
-    /** Como [shot], pero espera a que los Flow de Room hayan pintado [waitText] antes de capturar. */
-    private fun shotWhen(name: String, waitText: String, dark: Boolean = false, content: @Composable () -> Unit) {
-        compose.setContent {
-            SaviaTheme(if (dark) "dark" else "light") { Surface { content() } }
-        }
-        compose.waitUntil(15_000) {
-            compose.onAllNodesWithText(waitText, substring = true).fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.waitForIdle()
-        compose.onRoot().captureRoboImage("build/shots/$name.png")
-    }
+    
 
     @Test
     @Config(sdk = [35], qualifiers = "w411dp-h1500dp-xhdpi")

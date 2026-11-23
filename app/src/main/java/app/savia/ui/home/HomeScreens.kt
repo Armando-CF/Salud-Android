@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -59,7 +60,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import app.savia.Savia
 import app.savia.data.DailyLog
-import app.savia.data.MedIntake
 import app.savia.data.Profile
 import app.savia.ui.components.NavRow
 import app.savia.ui.components.Pill
@@ -69,6 +69,7 @@ import app.savia.ui.components.Sparkline
 import app.savia.ui.cycle.CycleSummaryCard
 import app.savia.ui.cycle.rememberCycleState
 import app.savia.ui.measure.MeasureStats
+import app.savia.ui.meds.MedActions
 import app.savia.ui.meds.dosesForDay
 import app.savia.ui.nav.Routes
 import app.savia.ui.nav.navigateTab
@@ -89,6 +90,7 @@ internal val moodLabels = listOf("Muy mal", "Mal", "Regular", "Bien", "Excelente
 fun HomeScreen(nav: NavController) {
     val t = today()
     val db = Savia.db
+    val context = LocalContext.current
     val profile by db.profile().observe().collectAsStateWithLifecycle(initialValue = null)
     val cycleEnabled by Savia.prefs.cycleEnabled.flow.collectAsStateWithLifecycle()
     val symptoms by remember { db.symptoms().observeRecent(4) }.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -150,10 +152,7 @@ fun HomeScreen(nav: NavController) {
                         val skipped = d.intake?.status == "skipped"
                         Row(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable {
-                                Savia.io {
-                                    if (d.intake != null) db.medications().deleteIntakeSlot(d.med.id, t, d.slot)
-                                    else db.medications().insertIntake(MedIntake(medicationId = d.med.id, epochDay = t, slot = d.slot, timestamp = nowMillis()))
-                                }
+                                if (d.intake != null) MedActions.undo(context, d, t) else MedActions.take(context, d, t)
                             }.padding(vertical = 8.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {

@@ -18,17 +18,7 @@ import org.robolectric.annotation.Config
 /** Capturas de Bienvenida, Mi ficha, Ajustes y pantalla de bloqueo. */
 class ProfileShots : ScreenshotBase() {
 
-    /** Como [shot], pero espera a que aparezca [waitText] (datos que llegan por Flow desde la base). */
-    private fun shotWhen(name: String, waitText: String, dark: Boolean = false, content: @Composable () -> Unit) {
-        compose.setContent {
-            SaviaTheme(if (dark) "dark" else "light") { Surface { content() } }
-        }
-        compose.waitUntil(10_000) {
-            compose.onAllNodesWithText(waitText, substring = true).fetchSemanticsNodes().isNotEmpty()
-        }
-        compose.waitForIdle()
-        compose.onRoot().captureRoboImage("build/shots/$name.png")
-    }
+    
 
     @Test
     fun onboarding1Welcome() = shot("profile_onboarding_1") { OnboardingScreen(onDone = {}) }
