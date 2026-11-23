@@ -82,11 +82,11 @@ const fMonthYear = f({ month: 'long', year: 'numeric' })
 
 export const Fmt = {
   /** "23 nov 2026" */
-  date: (epochDay: number): string => noDots(fMedium.format(epochDayToDate(epochDay))),
+  date: (epochDay: number): string => noDots(fMedium.format(epochDayToDate(epochDay))).replace(/ de /g, ' '),
   /** "23 nov" */
-  dateShort: (epochDay: number): string => noDots(fShort.format(epochDayToDate(epochDay))),
+  dateShort: (epochDay: number): string => noDots(fShort.format(epochDayToDate(epochDay))).replace(' de ', ' '),
   /** "lun 23 nov" */
-  dateWeekday: (epochDay: number): string => noDots(fWeekday.format(epochDayToDate(epochDay))).replace(',', ''),
+  dateWeekday: (epochDay: number): string => noDots(fWeekday.format(epochDayToDate(epochDay))).replace(',', '').replace(' de ', ' '),
   /** "Lunes 23 de noviembre de 2026" */
   dateLong: (epochDay: number): string => cap(fLong.format(epochDayToDate(epochDay)).replace(',', '')),
   /** "Noviembre 2026" */

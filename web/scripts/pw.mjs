@@ -40,7 +40,7 @@ export async function withApp(opts, fn) {
   const port = opts.port ?? 4300 + Math.floor(Math.random() * 500)
   const server = await serve(port, BASE)
   const browser = await chromium.launch()
-  const context = await browser.newContext({ ...devices['iPhone 14'], colorScheme: opts.dark ? 'dark' : 'light', locale: 'es-MX', timezoneId: 'America/Mexico_City' })
+  const context = await browser.newContext({ ...devices['iPhone 14'], colorScheme: opts.dark ? 'dark' : 'light', locale: 'es-MX' }) // misma zona horaria que Node: los datos de ejemplo se calculan aquí
   const page = await context.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))

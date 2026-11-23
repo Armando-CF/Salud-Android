@@ -41,10 +41,19 @@ export default function App() {
       try { await navigator.storage?.persist?.() } catch { /* no disponible */ }
       if (alive) setReady(true)
     })()
+    // Cierra el teclado al tocar cualquier cosa que no sea un campo (en iPhone el teclado no se cierra solo).
+    const dismissKeyboard = (e: MouseEvent) => {
+      const active = document.activeElement as HTMLElement | null
+      if (!active || !/^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)) return
+      const target = e.target as HTMLElement | null
+      if (target && target.closest('input, textarea, select, label')) return
+      active.blur()
+    }
+    document.addEventListener('click', dismissKeyboard, true)
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const onScheme = () => { getSetting('themeMode').then(applyTheme) }
     mq.addEventListener?.('change', onScheme)
-    return () => { alive = false; mq.removeEventListener?.('change', onScheme) }
+    return () => { alive = false; mq.removeEventListener?.('change', onScheme); document.removeEventListener('click', dismissKeyboard, true) }
   }, [])
 
   return (

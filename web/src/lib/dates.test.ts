@@ -17,6 +17,8 @@ describe('fechas', () => {
   it('formatea en español', () => {
     const d = ymdToEpochDay(2026, 11, 23)
     expect(Fmt.date(d)).toBe('23 nov 2026')
+    expect(Fmt.dateWeekday(d)).toBe('lun 23 nov')
+    expect(Fmt.dateShort(d)).toBe('23 nov')
     expect(Fmt.dateLong(d)).toBe('Lunes 23 de noviembre de 2026')
     expect(Fmt.num(72.5)).toBe('72.5')
     expect(Fmt.num(80)).toBe('80')

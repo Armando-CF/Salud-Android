@@ -1,0 +1,14 @@
+.home-quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.home-quick button { border: 0; border-radius: 18px; padding: 12px 4px 10px; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; color: var(--text); cursor: pointer; min-height: 72px; }
+.home-quick button:active { filter: brightness(0.95); }
+.home-profile-btn { border: 0; background: rgba(255, 255, 255, 0.16); color: inherit; border-radius: 999px; padding: 4px 6px 4px 4px; display: inline-flex; align-items: center; gap: 2px; cursor: pointer; min-height: 44px; }
+.home-moods { display: flex; justify-content: space-between; }
+.home-moods button { width: 54px; height: 54px; border-radius: 50%; border: 0; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.home-badge { width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.home-kicker { font-size: 12.5px; font-weight: 700; }
+.home-title { font-size: 17px; font-weight: 700; }
+.home-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+.home-install { background: var(--primary-container); color: var(--on-primary-container); border-radius: var(--radius); padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
+.home-install b { display: block; margin-bottom: 2px; }
+.home-check { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; border: 2px solid var(--outline); color: #fff; }
+.home-check.on { background: var(--good); border-color: var(--good); }
