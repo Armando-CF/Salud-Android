@@ -33,6 +33,7 @@ import app.savia.data.PetSpecies
 import app.savia.data.ProfileInfo
 import app.savia.data.VaccinationTypes
 import app.savia.ui.profile.ProfileAvatar
+import app.savia.ui.profile.ProfileSwitch
 import app.savia.ui.vaccines.VaccineLogic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -60,6 +61,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -124,6 +126,9 @@ fun HomeScreen(nav: NavController) {
     val others by produceState(emptyList<OtherProfileStatus>(), allProfiles, t) {
         value = withContext(Dispatchers.IO) { othersToday(allProfiles.filter { it.id != active.id }, t) }
     }
+
+    // Si se llegó aquí por "Editar ficha" de otro perfil, abre la pantalla pendiente.
+    LaunchedEffect(Unit) { ProfileSwitch.consume()?.let { nav.navigate(it) } }
 
     val name = profile?.name?.trim().orEmpty()
     val title = when {

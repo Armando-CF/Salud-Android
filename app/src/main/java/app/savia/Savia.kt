@@ -7,6 +7,7 @@ import app.savia.data.Profile
 import app.savia.data.ProfileInfo
 import app.savia.data.ProfileStore
 import app.savia.data.SaviaDb
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -78,7 +79,6 @@ object Savia {
      */
     fun init(context: Context, database: SaviaDb? = null) {
         watcher?.cancel()
-        dbs.values.forEach { if (it !== database) runCatching { it.close() } }
         dbs.clear(); prefsById.clear(); infoById.clear()
         appContext = context.applicationContext
         profiles = ProfileStore(appContext)
@@ -111,7 +111,8 @@ object Savia {
         }
 
     private fun watchProfiles() {
-        val s = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        // Si un perfil se elimina o se reinicia mientras se observa, la consulta en curso puede fallar: se ignora.
+        val s = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, _ -> })
         watcher = s
         s.launch {
             summaries.collect { list ->
