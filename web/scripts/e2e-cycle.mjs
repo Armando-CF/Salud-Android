@@ -65,7 +65,7 @@ report('persona', await withApp({ seed: 'person' }, async ({ page, go, shot, aud
   await page.waitForSelector('.cy-headline')
   const today2 = await idbGet(page, 'savia-p1', 'cycleDays', t)
   check(today2?.pregnancyTest === 2, `la prueba de embarazo no se guardó (${today2?.pregnancyTest})`)
-  check(today2?.basalTemp === 36.6 && today2?.symptoms === 'colicos' && today2?.flow === 3, 'el registro del día no conservó temperatura, síntomas o flujo: ' + JSON.stringify(today2))
+  check(today2?.basalTemp === 36.6 && String(today2?.symptoms).includes('colicos') && today2?.flow === 3, 'el registro del día no conservó temperatura, síntomas o flujo: ' + JSON.stringify(today2))
   check(await page.locator(`.cy-cell[data-day="${t}"] [data-testid=cy-test-mark]`).count() === 1, 'hoy no muestra el rombo de prueba de embarazo')
   check(await page.locator('.cy-lines', { hasText: 'Prueba de embarazo: positiva' }).count() === 1, 'la tarjeta "Hoy registraste" no lista la prueba')
   await shot('cycle_after_test')

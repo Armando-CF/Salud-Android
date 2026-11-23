@@ -181,6 +181,9 @@ input[type='checkbox'] { width: 22px; height: 22px; accent-color: var(--primary)
   padding: 14px calc(var(--safe-right) + 14px) 28px calc(var(--safe-left) + 14px);
   display: flex; flex-direction: column; gap: 12px;
 }
+/* El cuerpo es una columna de altura fija: sin esto, los hijos con desplazamiento propio (chips, segmentados) se encogen. */
+.page-body > * { flex-shrink: 0; }
+.sheet-body > * { flex-shrink: 0; }
 .page-body.with-fab { padding-bottom: 96px; }
 .page-body.flush { padding: 0; gap: 0; }
 /* Las pantallas sin barra inferior respetan la zona segura de abajo (barra de inicio del iPhone). */

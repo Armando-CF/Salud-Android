@@ -14,6 +14,7 @@ import { Fmt, millisToEpochDay, nowMillis, today } from '../../lib/dates'
 import { isIos, isStandalone } from '../../lib/files'
 import { Avatar, Card, IconButton, NavRow, Page, PawIcon, Sparkline, intensityColor } from '../../ui'
 import { CycleSummaryCard } from '../cycle'
+import { upcomingFollowUps } from '../studies'
 import { weightSummary, weightText as measureWeightText } from '../measure'
 import './home.css'
 
@@ -65,6 +66,8 @@ export function HomePage() {
   const counts = useLiveQuery(async () => (await db.symptoms.count()) + (await db.measurements.count()) + (await db.cycleDays.count()) + (await db.vaccinations.count()) + (await db.medications.count()), [db])
   const others = useLiveQuery(async () => (homeParts.others ? homeParts.others((await allProfiles()).filter((p) => p.id !== info.id), t) : []), [info.id, t]) ?? []
   const lastBackup = useLiveQuery(() => getSetting('lastBackup'), []) ?? 0
+  const studies = useLiveQuery(() => db.studies.toArray(), [db]) ?? []
+  const followUps = upcomingFollowUps(studies, t).filter((s) => (s.followUpEpochDay ?? 0) <= t + 45).slice(0, 2)
 
   const name = (profile?.name ?? info.name).trim()
   const self = !isPet && info.id === 1
@@ -198,7 +201,17 @@ export function HomePage() {
         </Card>
       )}
 
-      {homeParts.followUpCards?.()}
+      {followUps.map((st) => (
+        <Card key={st.id} onClick={() => nav(`/estudios/${st.id}`)}>
+          <div className="row">
+            <Badge icon={<FlaskConical size={24} />} color="var(--warn)" />
+            <div className="grow">
+              <div className="home-kicker" style={{ color: 'var(--warn)' }}>Seguimiento · {Fmt.daysFromNow(st.followUpEpochDay!)}</div>
+              <div className="home-title ellipsis">{st.title}</div>
+            </div>
+          </div>
+        </Card>
+      ))}
 
       {backupDue && (
         <Card onClick={() => nav('/exportar')}>
