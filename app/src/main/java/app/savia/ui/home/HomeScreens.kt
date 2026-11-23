@@ -11,6 +11,3 @@ fun HomeScreen(nav: NavController) { SaviaScaffold("Hoy") { Text("Pendiente") } 
 
 @Composable
 fun MoreScreen(nav: NavController) { SaviaScaffold("Más") { Text("Pendiente") } }
-
-@Composable
-fun OnboardingScreen(onDone: () -> Unit) { Text("Pendiente") }

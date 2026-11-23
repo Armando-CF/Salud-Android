@@ -7,7 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.savia.reminders.ReminderScheduler
-import app.savia.ui.home.OnboardingScreen
+import app.savia.ui.profile.OnboardingScreen
 import app.savia.ui.lock.AppLockGate
 import app.savia.ui.nav.AppNav
 import app.savia.ui.theme.SaviaTheme
