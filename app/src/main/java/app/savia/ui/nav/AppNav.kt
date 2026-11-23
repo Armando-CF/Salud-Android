@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Icon
@@ -62,13 +63,17 @@ import app.savia.ui.wellbeing.WellbeingScreen
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
-private fun tabs(cycleEnabled: Boolean): List<Tab> = listOf(
-    Tab(Routes.HOME, "Hoy", Icons.Filled.Today),
-    Tab(Routes.SYMPTOMS, "Síntomas", Icons.Filled.EditNote),
-    if (cycleEnabled) Tab(Routes.CYCLE, "Ciclo", Icons.Filled.WaterDrop) else Tab(Routes.MEASURES, "Mediciones", Icons.Filled.MonitorWeight),
-    Tab(Routes.BODY, "Cuerpo", Icons.Filled.Accessibility),
-    Tab(Routes.MORE, "Más", Icons.Filled.Apps),
-)
+/** Especies de mascota que tienen figura en el atlas corporal. */
+val ATLAS_PET_SPECIES = setOf("perro", "gato")
+
+private fun tabs(cycleEnabled: Boolean, isPet: Boolean, species: String): List<Tab> = buildList {
+    add(Tab(Routes.HOME, "Hoy", Icons.Filled.Today))
+    add(Tab(Routes.SYMPTOMS, "Síntomas", Icons.Filled.EditNote))
+    if (cycleEnabled && !isPet) add(Tab(Routes.CYCLE, "Ciclo", Icons.Filled.WaterDrop))
+    else add(Tab(Routes.MEASURES, "Mediciones", Icons.Filled.MonitorWeight))
+    if (!isPet || species in ATLAS_PET_SPECIES) add(Tab(Routes.BODY, "Cuerpo", if (isPet) Icons.Filled.Pets else Icons.Filled.Accessibility))
+    add(Tab(Routes.MORE, "Más", Icons.Filled.Apps))
+}
 
 /** Navega a una pestaña de primer nivel conservando el estado de las demás. */
 fun NavController.navigateTab(route: String) {
@@ -83,7 +88,8 @@ fun NavController.navigateTab(route: String) {
 fun AppNav() {
     val nav = rememberNavController()
     val cycleEnabled by Savia.prefs.cycleEnabled.flow.collectAsStateWithLifecycle()
-    val tabs = tabs(cycleEnabled)
+    val active by Savia.active.collectAsStateWithLifecycle()
+    val tabs = tabs(cycleEnabled, active.isPet, active.species)
     val tabRoutes = tabs.map { it.route }
     val entry by nav.currentBackStackEntryAsState()
     val currentRoute = entry?.destination?.route

@@ -21,6 +21,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.FactCheck
 import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Vaccines
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import app.savia.data.PetSpecies
+import app.savia.data.ProfileInfo
+import app.savia.data.VaccinationTypes
+import app.savia.ui.profile.ProfileAvatar
+import app.savia.ui.vaccines.VaccineLogic
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Event
@@ -102,12 +117,36 @@ fun HomeScreen(nav: NavController) {
     val studies by remember { db.studies().observeAll() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val cycle = rememberCycleState()
 
+    val active by Savia.active.collectAsStateWithLifecycle()
+    val isPet = active.isPet
+    val allProfiles by remember { Savia.summaries }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val vaccines by remember { db.vaccinations().observeAll() }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val others by produceState(emptyList<OtherProfileStatus>(), allProfiles, t) {
+        value = withContext(Dispatchers.IO) { othersToday(allProfiles.filter { it.id != active.id }, t) }
+    }
+
     val name = profile?.name?.trim().orEmpty()
+    val title = when {
+        isPet || active.id != 1 -> active.displayName
+        name.isEmpty() -> "Hola"
+        else -> "Hola, ${name.substringBefore(' ')}"
+    }
     SaviaScaffold(
-        title = if (name.isEmpty()) "Hola" else "Hola, ${name.substringBefore(' ')}",
-        subtitle = Fmt.dateLong(t),
+        title = title,
+        subtitle = listOf(active.subtitle.takeIf { isPet || active.id != 1 }.orEmpty(), Fmt.dateLong(t)).filter { it.isNotBlank() }.joinToString(" · "),
         actions = {
-            IconButton(onClick = { nav.navigate(Routes.PROFILE) }) { Icon(Icons.Filled.AccountCircle, contentDescription = "Mi ficha") }
+            // Perfil activo: toca para cambiar de persona o mascota
+            Surface(
+                onClick = { nav.navigate(Routes.PROFILES) },
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.semantics { contentDescription = "Cambiar de perfil" },
+            ) {
+                Row(Modifier.padding(start = 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ProfileAvatar(active, size = 32.dp)
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             IconButton(onClick = { nav.navigate(Routes.SETTINGS) }) { Icon(Icons.Filled.Settings, contentDescription = "Ajustes") }
         },
     ) { pad ->
@@ -119,20 +158,45 @@ fun HomeScreen(nav: NavController) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 QuickAction(Icons.Filled.EditNote, "Síntoma", MaterialTheme.colorScheme.primary, Modifier.weight(1f)) { nav.navigate(Routes.symptomEdit()) }
                 QuickAction(Icons.Filled.MonitorWeight, "Peso", SaviaTheme.colors.chart[2], Modifier.weight(1f)) { nav.navigate(Routes.measure("weight", add = true)) }
-                QuickAction(Icons.Filled.Mood, "Bienestar", SaviaTheme.colors.warn, Modifier.weight(1f)) { nav.navigate(Routes.WELLBEING) }
-                if (cycleEnabled) {
-                    QuickAction(Icons.Filled.WaterDrop, "Periodo", SaviaTheme.colors.period, Modifier.weight(1f)) { nav.navigate(Routes.cycleDay(t)) }
+                if (isPet) {
+                    QuickAction(Icons.Filled.Vaccines, "Vacuna", SaviaTheme.colors.good, Modifier.weight(1f)) { nav.navigate(Routes.vaccineEdit()) }
+                    QuickAction(Icons.Filled.Event, "Cita", MaterialTheme.colorScheme.tertiary, Modifier.weight(1f)) { nav.navigate(Routes.appointmentEdit()) }
                 } else {
-                    QuickAction(Icons.Filled.Favorite, "Presión", SaviaTheme.colors.period, Modifier.weight(1f)) { nav.navigate(Routes.measure("bp", add = true)) }
+                    QuickAction(Icons.Filled.Mood, "Bienestar", SaviaTheme.colors.warn, Modifier.weight(1f)) { nav.navigate(Routes.WELLBEING) }
+                    if (cycleEnabled) {
+                        QuickAction(Icons.Filled.WaterDrop, "Periodo", SaviaTheme.colors.period, Modifier.weight(1f)) { nav.navigate(Routes.cycleDay(t)) }
+                    } else {
+                        QuickAction(Icons.Filled.Favorite, "Presión", SaviaTheme.colors.period, Modifier.weight(1f)) { nav.navigate(Routes.measure("bp", add = true)) }
+                    }
                 }
             }
 
-            if (cycleEnabled && cycle.loaded) {
+            // Otros perfiles con algo pendiente hoy (familia y mascotas)
+            if (others.isNotEmpty()) {
+                SectionCard(title = "Tu familia y mascotas", action = { TextButton(onClick = { nav.navigate(Routes.PROFILES) }) { Text("Perfiles") } }) {
+                    for (o in others) {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { Savia.switchTo(o.info.id) }.padding(vertical = 7.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            ProfileAvatar(o.info, size = 36.dp)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(o.info.displayName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(o.notes.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = if (o.urgent) SaviaTheme.colors.warn else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
+            if (cycleEnabled && !isPet && cycle.loaded) {
                 CycleSummaryCard(cycle.analysis, onClick = { nav.navigateTab(Routes.CYCLE) })
             }
 
             // ¿Cómo te sientes hoy?
-            MoodCard(log, onPick = { mood -> Savia.io { db.dailyLogs().save((db.dailyLogs().get(t) ?: DailyLog(epochDay = t)).copy(mood = mood)) } }, onOpen = { nav.navigate(Routes.WELLBEING) })
+            if (!isPet) MoodCard(log, onPick = { mood -> Savia.io { db.dailyLogs().save((db.dailyLogs().get(t) ?: DailyLog(epochDay = t)).copy(mood = mood)) } }, onOpen = { nav.navigate(Routes.WELLBEING) })
 
             // Medicamentos de hoy
             val doses = remember(meds, intakes, t) { dosesForDay(meds, intakes, t) }
@@ -194,17 +258,36 @@ fun HomeScreen(nav: NavController) {
                 }
             }
 
+            // Vacunas pendientes o próximas (30 días)
+            val dueVaccines = remember(vaccines, t) { VaccineLogic.upcoming(vaccines, t).filter { it.dueDay <= t + 30 }.take(2) }
+            for (d in dueVaccines) {
+                SectionCard(onClick = { nav.navigate(Routes.VACCINES) }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconBadge(Icons.Filled.Vaccines, if (d.overdue) SaviaTheme.colors.bad else SaviaTheme.colors.good)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                (if (d.overdue) "Vencida · " else "Próxima · ") + Fmt.daysFromNow(d.dueDay),
+                                style = MaterialTheme.typography.labelMedium, color = if (d.overdue) SaviaTheme.colors.bad else SaviaTheme.colors.good, fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(d.vaccination.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(VaccinationTypes.label(d.vaccination.type) + " · " + Fmt.date(d.dueDay), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+
             // Peso
-            val ws = remember(weights, profile) { MeasureStats.weightSummary(weights, profile?.heightCm, profile?.goalWeightKg) }
+            val ws = remember(weights, profile, isPet) { MeasureStats.weightSummary(weights, if (isPet) null else profile?.heightCm, profile?.goalWeightKg) }
             if (ws != null) {
                 SectionCard(onClick = { nav.navigate(Routes.measure("weight")) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Peso", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
-                            Text("${Fmt.num(ws.latest, 1)} kg", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+                            Text(weightText(ws.latest, isPet), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
                             val parts = ArrayList<String>()
-                            ws.change30?.let { parts += "${Fmt.signed(it, 1)} kg en 30 días" }
-                            ws.bmi?.let { parts += "IMC ${Fmt.num(it, 1)}" }
+                            ws.change30?.let { parts += "${Fmt.signed(it, if (isPet) 2 else 1)} kg en 30 días" }
+                            if (!isPet) ws.bmi?.let { parts += "IMC ${Fmt.num(it, 1)}" }
                             if (parts.isEmpty()) parts += Fmt.relativeDay(ws.latestTimestamp.millisToEpochDay())
                             Text(parts.joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -255,21 +338,68 @@ fun HomeScreen(nav: NavController) {
             }
 
             // Primeros pasos (cuando aún no hay nada)
-            if (symptoms.isEmpty() && ws == null && doses.isEmpty() && appts.isEmpty()) {
+            if (symptoms.isEmpty() && ws == null && doses.isEmpty() && appts.isEmpty() && vaccines.isEmpty()) {
                 SectionCard(title = "Empieza por aquí") {
-                    Text(
-                        "Savia es tu bitácora de salud: todo lo que anotes se queda solo en tu teléfono.",
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    NavRow(Icons.Filled.EditNote, "Anota cómo te sientes", { nav.navigate(Routes.symptomEdit()) }, subtitle = "Síntomas, con intensidad y zona del cuerpo")
-                    NavRow(Icons.Filled.MonitorWeight, "Registra tu peso", { nav.navigate(Routes.measure("weight", add = true)) }, subtitle = "Con gráficas y tendencias")
-                    NavRow(Icons.Filled.Accessibility, "Explora el cuerpo humano", { nav.navigateTab(Routes.BODY) }, subtitle = "Nombres de zonas, huesos y órganos")
-                    NavRow(Icons.Filled.AccountCircle, "Completa tu ficha", { nav.navigate(Routes.PROFILE) }, subtitle = "Tipo de sangre, alergias, contacto de emergencia")
+                    if (isPet) {
+                        Text(
+                            "Aquí llevarás el historial de salud de ${active.displayName}: lo que anotes se queda solo en tu teléfono.",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        NavRow(Icons.Filled.Vaccines, "Registra sus vacunas", { nav.navigate(Routes.VACCINES) }, subtitle = "Vacunas y desparasitación, con recordatorios")
+                        NavRow(Icons.Filled.MonitorWeight, "Registra su peso", { nav.navigate(Routes.measure("weight", add = true)) }, subtitle = "Con gráfica y tendencia")
+                        NavRow(Icons.Filled.EditNote, "Anota lo que le notes", { nav.navigate(Routes.symptomEdit()) }, subtitle = "Vómito, cojera, comezón, falta de apetito…")
+                        NavRow(Icons.Filled.Pets, "Completa su ficha", { nav.navigate(Routes.PROFILE) }, subtitle = "Raza, edad, microchip, veterinario")
+                    } else {
+                        Text(
+                            "Savia es tu bitácora de salud: todo lo que anotes se queda solo en tu teléfono.",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        NavRow(Icons.Filled.EditNote, "Anota cómo te sientes", { nav.navigate(Routes.symptomEdit()) }, subtitle = "Síntomas, con intensidad y zona del cuerpo")
+                        NavRow(Icons.Filled.MonitorWeight, "Registra tu peso", { nav.navigate(Routes.measure("weight", add = true)) }, subtitle = "Con gráficas y tendencias")
+                        NavRow(Icons.Filled.Accessibility, "Explora el cuerpo humano", { nav.navigateTab(Routes.BODY) }, subtitle = "Nombres de zonas, huesos y órganos")
+                        NavRow(Icons.Filled.AccountCircle, "Completa tu ficha", { nav.navigate(Routes.PROFILE) }, subtitle = "Tipo de sangre, alergias, contacto de emergencia")
+                        if (allProfiles.size <= 1) {
+                            NavRow(Icons.Filled.Groups, "Agrega a tu familia y mascotas", { nav.navigate(Routes.PROFILES) }, subtitle = "Cada quien con su propio historial")
+                        }
+                    }
                 }
             }
         }
     }
+}
+
+/** Peso para tarjetas: en mascotas pequeñas se muestra en gramos. */
+internal fun weightText(kg: Double, isPet: Boolean): String = when {
+    isPet && kg < 1.0 -> "${Fmt.num(kg * 1000, 0)} g"
+    isPet -> "${Fmt.num(kg, 2)} kg"
+    else -> "${Fmt.num(kg, 1)} kg"
+}
+
+/** Lo pendiente HOY de otro perfil, para avisarlo en la pantalla de inicio del perfil activo. */
+internal data class OtherProfileStatus(val info: ProfileInfo, val notes: List<String>, val urgent: Boolean)
+
+/** Revisa los demás perfiles: tomas pendientes de hoy, citas en las próximas 48 h y vacunas vencidas o cercanas. */
+internal suspend fun othersToday(others: List<ProfileInfo>, today: Long): List<OtherProfileStatus> {
+    val now = nowMillis()
+    val out = ArrayList<OtherProfileStatus>()
+    for (info in others) {
+        val db = Savia.dbFor(info.id)
+        val notes = ArrayList<String>()
+        var urgent = false
+        val pending = dosesForDay(db.medications().getAll(), db.medications().getIntakesOfDay(today), today).count { it.intake == null }
+        if (pending > 0) { notes += if (pending == 1) "1 toma pendiente" else "$pending tomas pendientes"; urgent = true }
+        db.appointments().getAll().filter { !it.done && it.timestamp >= now - 3_600_000L && it.timestamp <= now + 2 * 86_400_000L }.minByOrNull { it.timestamp }?.let {
+            notes += "Cita ${Fmt.relativeDay(it.timestamp.millisToEpochDay()).lowercase()} ${Fmt.time(it.timestamp)}"
+        }
+        VaccineLogic.upcoming(db.vaccinations().getAll(), today).firstOrNull { it.dueDay <= today + 7 }?.let {
+            notes += if (it.overdue) "${it.vaccination.name}: vencida" else "${it.vaccination.name} ${Fmt.daysFromNow(it.dueDay)}"
+            if (it.overdue) urgent = true
+        }
+        if (notes.isNotEmpty()) out += OtherProfileStatus(info, notes, urgent)
+    }
+    return out
 }
 
 @Composable
@@ -317,25 +447,47 @@ private fun MoodCard(log: DailyLog?, onPick: (Int) -> Unit, onOpen: () -> Unit) 
 fun MoreScreen(nav: NavController) {
     val cycleEnabled by Savia.prefs.cycleEnabled.flow.collectAsStateWithLifecycle()
     val profile by Savia.db.profile().observe().collectAsStateWithLifecycle(initialValue = null)
+    val active by Savia.active.collectAsStateWithLifecycle()
+    val isPet = active.isPet
+    val count by Savia.profiles.ids.collectAsStateWithLifecycle()
     SaviaScaffold("Más") { pad ->
         Column(
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SectionCard(title = "Registro y seguimiento", contentPadding = 12.dp) {
-                if (cycleEnabled) {
-                    NavRow(Icons.Filled.MonitorWeight, "Mediciones", { nav.navigate(Routes.MEASURES) }, subtitle = "Peso, presión, glucosa, temperatura…", iconTint = SaviaTheme.colors.chart[2])
-                } else {
-                    NavRow(Icons.Filled.WaterDrop, "Ciclo menstrual", { nav.navigate(Routes.CYCLE_SETTINGS) }, subtitle = "Activa el seguimiento del periodo", iconTint = SaviaTheme.colors.period)
+            // Perfil activo
+            SectionCard(onClick = { nav.navigate(Routes.PROFILES) }, contentPadding = 14.dp) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ProfileAvatar(active, size = 48.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(active.displayName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            if (count.size > 1) "Viendo este perfil · toca para cambiar (${count.size} perfiles)" else "Agrega a tu familia y a tus mascotas",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(Icons.Filled.Groups, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 }
-                NavRow(Icons.Filled.Mood, "Bienestar diario", { nav.navigate(Routes.WELLBEING) }, subtitle = "Ánimo, energía, sueño, agua y ejercicio", iconTint = SaviaTheme.colors.warn)
-                NavRow(Icons.Filled.Medication, "Medicamentos", { nav.navigate(Routes.MEDS) }, subtitle = "Tomas del día y recordatorios", iconTint = SaviaTheme.colors.good)
-                NavRow(Icons.Filled.Event, "Citas médicas", { nav.navigate(Routes.APPOINTMENTS) }, subtitle = "Próximas consultas y recordatorios", iconTint = MaterialTheme.colorScheme.tertiary)
-                NavRow(Icons.Filled.Science, "Estudios y chequeos", { nav.navigate(Routes.STUDIES) }, subtitle = "Resultados de laboratorio y su evolución", iconTint = SaviaTheme.colors.chart[4])
-                NavRow(Icons.AutoMirrored.Filled.FactCheck, "Autoexploración", { nav.navigate(Routes.SELF_EXAM) }, subtitle = "Mamaria, testicular y de piel", iconTint = SaviaTheme.colors.ovulation)
             }
-            SectionCard(title = "Tu información", contentPadding = 12.dp) {
-                NavRow(Icons.Filled.AccountCircle, "Mi ficha", { nav.navigate(Routes.PROFILE) }, subtitle = profileSubtitle(profile))
+            SectionCard(title = "Registro y seguimiento", contentPadding = 12.dp) {
+                if (!isPet) {
+                    if (cycleEnabled) {
+                        NavRow(Icons.Filled.MonitorWeight, "Mediciones", { nav.navigate(Routes.MEASURES) }, subtitle = "Peso, estatura, presión, glucosa…", iconTint = SaviaTheme.colors.chart[2])
+                    } else {
+                        NavRow(Icons.Filled.WaterDrop, "Ciclo menstrual", { nav.navigate(Routes.CYCLE_SETTINGS) }, subtitle = "Activa el seguimiento del periodo", iconTint = SaviaTheme.colors.period)
+                    }
+                }
+                NavRow(Icons.Filled.Vaccines, if (isPet) "Vacunas y desparasitación" else "Vacunas", { nav.navigate(Routes.VACCINES) }, subtitle = if (isPet) "Cartilla, próximas aplicaciones y recordatorios" else "Cartilla de vacunación y próximos refuerzos", iconTint = SaviaTheme.colors.good)
+                if (!isPet) NavRow(Icons.Filled.Mood, "Bienestar diario", { nav.navigate(Routes.WELLBEING) }, subtitle = "Ánimo, energía, sueño, agua y ejercicio", iconTint = SaviaTheme.colors.warn)
+                NavRow(Icons.Filled.Medication, "Medicamentos", { nav.navigate(Routes.MEDS) }, subtitle = "Tomas del día y recordatorios", iconTint = SaviaTheme.colors.chart[0])
+                NavRow(Icons.Filled.Event, if (isPet) "Citas con el veterinario" else "Citas médicas", { nav.navigate(Routes.APPOINTMENTS) }, subtitle = "Próximas consultas y recordatorios", iconTint = MaterialTheme.colorScheme.tertiary)
+                NavRow(Icons.Filled.Science, "Estudios y chequeos", { nav.navigate(Routes.STUDIES) }, subtitle = "Resultados de laboratorio y su evolución", iconTint = SaviaTheme.colors.chart[4])
+                if (!isPet) NavRow(Icons.AutoMirrored.Filled.FactCheck, "Autoexploración", { nav.navigate(Routes.SELF_EXAM) }, subtitle = "Mamaria, testicular y de piel", iconTint = SaviaTheme.colors.ovulation)
+            }
+            SectionCard(title = if (isPet) "Información de ${active.displayName}" else "Tu información", contentPadding = 12.dp) {
+                NavRow(if (isPet) Icons.Filled.Pets else Icons.Filled.AccountCircle, if (isPet) "Ficha" else "Mi ficha", { nav.navigate(Routes.PROFILE) }, subtitle = profileSubtitle(profile))
+                NavRow(Icons.Filled.Groups, "Perfiles", { nav.navigate(Routes.PROFILES) }, subtitle = "Familia y mascotas, cada quien con su historial")
                 NavRow(Icons.Filled.FileDownload, "Exportar y respaldo", { nav.navigate(Routes.EXPORT) }, subtitle = "Excel, PDF, CSV y copia de seguridad")
                 NavRow(Icons.Filled.Settings, "Ajustes", { nav.navigate(Routes.SETTINGS) }, subtitle = "Tema, módulos, bloqueo y notificaciones")
             }
@@ -349,6 +501,10 @@ fun MoreScreen(nav: NavController) {
 
 private fun profileSubtitle(p: Profile?): String {
     if (p == null) return "Datos personales y de emergencia"
+    if (p.isPet) {
+        val pet = listOfNotNull(PetSpecies.label(p.species), p.breed.takeIf { it.isNotBlank() }, p.birthEpochDay?.let { "${Fmt.age(it)} años" })
+        return pet.joinToString(" · ")
+    }
     val parts = listOfNotNull(
         p.name.takeIf { it.isNotBlank() },
         p.birthEpochDay?.let { "${Fmt.age(it)} años" },

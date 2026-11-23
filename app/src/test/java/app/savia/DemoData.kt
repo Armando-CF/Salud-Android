@@ -145,4 +145,46 @@ object DemoData {
         db.selfExams().insert(SelfExam(epochDay = t - 64, type = if (cycle) "mama" else "testicular", normal = true))
         db.selfExams().insert(SelfExam(epochDay = t - 15, type = "piel", normal = false, notes = "Lunar nuevo en el hombro izquierdo; vigilar."))
     }
+
+    /**
+     * Además del perfil principal (con [seed]), crea una familia de ejemplo: un hijo de 7 años y un perro,
+     * cada uno con su historial. Devuelve (idHijo, idPerro). El perfil activo sigue siendo el 1.
+     */
+    fun seedFamily(): Pair<Int, Int> = runBlocking {
+        seed()
+        val t = today()
+        val kid = Savia.createProfile(Profile(name = "Leo", sex = "M", relation = "Hijo", birthEpochDay = t - 365L * 7 - 100, heightCm = 122.0, avatarColor = 2, bloodType = "O+", allergies = "Polen"))
+        Savia.dbFor(kid).let { db ->
+            for (i in 0..8) {
+                val day = t - 720 + i * 90
+                db.measurements().insert(Measurement(timestamp = epochDayToMillis(day, 9 * 60), type = "weight", value = 19.5 + i * 0.6))
+                db.measurements().insert(Measurement(timestamp = epochDayToMillis(day, 9 * 60 + 1), type = "height", value = 110.0 + i * 1.5))
+            }
+            db.symptoms().insert(SymptomEntry(timestamp = epochDayToMillis(t - 2, 20 * 60), name = "Fiebre", intensity = 5, notes = "38.2 °C por la noche"))
+            db.symptoms().insert(SymptomEntry(timestamp = epochDayToMillis(t - 2, 8 * 60), name = "Tos", intensity = 3))
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = t - 400, name = "Influenza", dose = "Anual", nextDueEpochDay = t - 35, place = "Centro de salud"))
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = t - 900, name = "SRP (sarampión, rubéola, paperas)", dose = "Refuerzo"))
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = t - 1500, name = "DPT", dose = "Refuerzo"))
+            val med = db.medications().insert(Medication(name = "Paracetamol infantil", dose = "5 ml", times = "08:00,16:00", startEpochDay = t - 2, endEpochDay = t + 1))
+            db.medications().insertIntake(MedIntake(medicationId = med, epochDay = t, slot = "08:00", timestamp = epochDayToMillis(t, 8 * 60 + 10)))
+            db.appointments().insert(Appointment(timestamp = epochDayToMillis(t + 1, 17 * 60), title = "Pediatra", doctor = "Dr. Méndez", specialty = "Pediatría"))
+        }
+        val dog = Savia.createProfile(Profile(name = "Firulais", kind = "pet", species = "perro", breed = "Mestizo", sex = "M", birthEpochDay = t - 365L * 4 - 60, sterilized = true, microchip = "985112003456789", markings = "Café con pecho blanco", doctorName = "Veterinaria Huellitas", doctorPhone = "55 2222 3333", avatarColor = 5, goalWeightKg = 17.0))
+        Savia.dbFor(dog).let { db ->
+            for (i in 0..12) db.measurements().insert(Measurement(timestamp = epochDayToMillis(t - 360 + i * 30, 10 * 60), type = "weight", value = Math.round((19.4 - i * 0.15 + (i % 3) * 0.1) * 100) / 100.0))
+            db.measurements().insert(Measurement(timestamp = epochDayToMillis(t - 20, 11 * 60), type = "temp", value = 38.6))
+            db.symptoms().insert(SymptomEntry(timestamp = epochDayToMillis(t - 1, 7 * 60), name = "Vómito", intensity = 4, tags = "Comió algo raro", notes = "Una vez, después del paseo."))
+            db.symptoms().insert(SymptomEntry(timestamp = epochDayToMillis(t - 9, 19 * 60), name = "Comezón / se rasca mucho", intensity = 5))
+            db.symptoms().insert(SymptomEntry(timestamp = epochDayToMillis(t - 40, 9 * 60), name = "Cojera", intensity = 6, regionId = "pet_carpo", regionLabel = "Carpo (muñeca)"))
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = t - 360, name = "Rabia", dose = "Anual", nextDueEpochDay = t + 5, place = "Veterinaria Huellitas", lot = "RB-2231"))
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = t - 330, name = "Múltiple (séxtuple)", dose = "Refuerzo", nextDueEpochDay = t + 35, place = "Veterinaria Huellitas"))
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = t - 100, type = "desp_interna", name = "Desparasitación interna", nextDueEpochDay = t - 10))
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = t - 25, type = "desp_externa", name = "Pipeta antipulgas", nextDueEpochDay = t + 5))
+            db.medications().insert(Medication(name = "Omeprazol", dose = "10 mg", times = "09:00", startEpochDay = t - 1, endEpochDay = t + 4, instructions = "En ayunas"))
+            db.appointments().insert(Appointment(timestamp = epochDayToMillis(t + 5, 11 * 60), title = "Vacuna anual", doctor = "Veterinaria Huellitas"))
+            val st = db.studies().insert(Study(epochDay = t - 200, title = "Química sanguínea", category = "lab", place = "Laboratorio veterinario", status = "normal"))
+            db.studies().insertResults(listOf(StudyResult(studyId = st, name = "Creatinina", value = 1.1, unit = "mg/dL", refMin = 0.5, refMax = 1.8)))
+        }
+        Pair(kid, dog)
+    }
 }
