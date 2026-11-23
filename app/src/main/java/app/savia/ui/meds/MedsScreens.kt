@@ -92,7 +92,7 @@ fun MedsScreen(nav: NavController) {
         onBack = { nav.back() },
         actions = {
             IconButton(onClick = { nav.navigate(Routes.APPOINTMENTS) }) {
-                Icon(Icons.Filled.Event, contentDescription = "Citas médicas")
+                Icon(Icons.Filled.Event, contentDescription = rememberMedsText().appointmentsTitle)
             }
         },
         floatingActionButton = {
@@ -120,7 +120,7 @@ fun MedsScreen(nav: NavController) {
                     EmptyState(
                         icon = Icons.Filled.Medication,
                         title = "Aún no tienes medicamentos",
-                        message = "Agrega tus medicamentos o tratamientos para llevar el control de tus tomas y recibir recordatorios a su hora.",
+                        message = rememberMedsText().medsEmpty,
                         actionLabel = "Agregar medicamento",
                         onAction = { nav.navigate(Routes.medEdit()) },
                     )
@@ -140,7 +140,7 @@ fun MedsScreen(nav: NavController) {
                                     color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 )
                                 Text(
-                                    "Savia no podrá avisarte a la hora de tus tomas hasta que las permitas.",
+                                    "Savia no podrá avisarte a la hora de las tomas hasta que las permitas.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onTertiaryContainer,
                                 )
@@ -201,7 +201,7 @@ fun MedsScreen(nav: NavController) {
                     val next = upcoming.firstOrNull()
                     NavRow(
                         icon = Icons.Filled.Event,
-                        title = "Citas médicas",
+                        title = rememberMedsText().appointmentsTitle,
                         onClick = { nav.navigate(Routes.APPOINTMENTS) },
                         subtitle = next?.let { "Próxima: ${appointmentTitle(it)} · ${Fmt.relativeDateTime(it.timestamp)}" } ?: "Sin citas próximas",
                     )
@@ -211,7 +211,7 @@ fun MedsScreen(nav: NavController) {
     }
 }
 
-internal fun appointmentTitle(a: Appointment): String = a.title.ifBlank { "Cita médica" }
+internal fun appointmentTitle(a: Appointment): String = a.title.ifBlank { MedsText.current().appointmentDefault }
 
 /** Tarjeta "Hoy": tomas programadas del día con sus acciones. */
 @Composable
@@ -222,7 +222,7 @@ private fun TodayCard(doses: List<DoseItem>, today: Long, nowMinutes: Int, hasSc
     }) {
         if (doses.isEmpty()) {
             Text(
-                if (hasScheduled) "Hoy no tienes tomas programadas." else "No tienes tomas con horario. Registra abajo las que tomes según las necesites.",
+                if (hasScheduled) "Hoy no hay tomas programadas." else rememberMedsText().noScheduledDoses,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -63,6 +62,7 @@ import app.savia.ui.components.SaviaTextField
 import app.savia.ui.components.SaviaTimePickerDialog
 import app.savia.ui.components.SectionCard
 import app.savia.ui.nav.back
+import app.savia.ui.studies.LastField
 import app.savia.util.formatHm
 import app.savia.util.today
 
@@ -72,6 +72,7 @@ private val dayFullNames = listOf("lunes", "martes", "miércoles", "jueves", "vi
 @Composable
 fun MedEditScreen(nav: NavController, id: Long?) {
     val context = LocalContext.current
+    val txt = rememberMedsText()
     val dao = Savia.db.medications()
 
     var loaded by rememberSaveable { mutableStateOf(id == null) }
@@ -156,19 +157,21 @@ fun MedEditScreen(nav: NavController, id: Long?) {
     ) { pad ->
         if (!loaded) return@SaviaScaffold
         Column(
-            Modifier.fillMaxSize().padding(pad).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+            // SaviaScaffold ya ajusta el contenido a la altura del teclado.
+            Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SectionCard(title = "Medicamento") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     SaviaTextField(
                         name, { name = it }, "Nombre",
-                        placeholder = "p. ej. Loratadina",
+                        placeholder = txt.medNamePlaceholder,
                         isError = nameError,
                         supportingText = if (nameError) "Escribe el nombre" else null,
                     )
-                    SaviaTextField(dose, { dose = it }, "Dosis", placeholder = "p. ej. 500 mg, 1 tableta, 5 ml")
-                    SaviaTextField(instructions, { instructions = it }, "Indicaciones", placeholder = "p. ej. con alimentos")
+                    SaviaTextField(dose, { dose = it }, "Dosis", placeholder = txt.dosePlaceholder)
+                    // Último campo de texto antes de horarios y fechas: "Listo" cierra el teclado.
+                    LastField(instructions, { instructions = it }, "Indicaciones", placeholder = txt.instructionsPlaceholder)
                 }
             }
 
@@ -261,10 +264,10 @@ fun MedEditScreen(nav: NavController, id: Long?) {
                     "Activo",
                     checked = active,
                     onCheckedChange = { active = it },
-                    subtitle = "Desactívalo si dejaste de tomarlo; su historial se conserva",
+                    subtitle = txt.inactiveHint,
                 )
                 Spacer(Modifier.height(8.dp))
-                SaviaTextField(notes, { notes = it }, "Notas", singleLine = false, minLines = 2, placeholder = "p. ej. quién lo recetó, efectos que notes")
+                SaviaTextField(notes, { notes = it }, "Notas", singleLine = false, minLines = 2, placeholder = txt.medNotesPlaceholder)
             }
 
             if (id != null) {
@@ -284,7 +287,7 @@ fun MedEditScreen(nav: NavController, id: Long?) {
                 }
             }
 
-            InfoNote("Savia solo te ayuda a recordar y registrar. Sigue siempre la dosis y los horarios que te indicó tu profesional de salud.")
+            InfoNote("Savia solo te ayuda a recordar y registrar. Sigue siempre la dosis y los horarios que te indicó ${txt.prescriber}.")
 
             Button(onClick = { onSave() }, modifier = Modifier.fillMaxWidth()) { Text("Guardar") }
             if (id != null) {

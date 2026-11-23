@@ -201,6 +201,6 @@ private fun TrendContent(nav: NavController, points: List<ParamPoint>, modifier:
             }
         }
 
-        InfoNote("Los rangos de referencia son orientativos y pueden variar entre laboratorios; usa los de tu reporte. Esta gráfica no sustituye la valoración de tu médico.")
+        InfoNote("Los rangos de referencia son orientativos y pueden variar entre laboratorios; usa los de tu reporte. Esta gráfica no sustituye la valoración de ${rememberStudyProfile().whoToAsk}.")
     }
 }

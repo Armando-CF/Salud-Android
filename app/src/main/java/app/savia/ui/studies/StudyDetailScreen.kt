@@ -96,6 +96,7 @@ fun StudyDetailScreen(nav: NavController, id: Long) {
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 HeaderCard(study)
+                if (study.category == StudyProfile.VACCINE) VaccinesMovedNote(onOpen = { nav.navigate(Routes.VACCINES) })
                 if (study.followUpEpochDay != null) FollowUpCard(study)
                 if (study.summary.isNotBlank()) {
                     SectionCard(title = "Resumen y conclusiones") {
@@ -168,7 +169,7 @@ private fun HeaderCard(study: Study) {
         }
         Spacer(Modifier.height(10.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Pill(StudyCategories.short(study.category), MaterialTheme.colorScheme.primary)
+            Pill(rememberStudyProfile().categoryShort(study.category), MaterialTheme.colorScheme.primary)
             StatusPill(study.status)
         }
         if (study.place.isNotBlank()) {
@@ -232,7 +233,7 @@ private fun ResultsCard(nav: NavController, results: List<StudyResult>) {
         Spacer(Modifier.height(10.dp))
         InfoNote(
             (if (results.any { it.value != null }) "Toca un resultado numérico para ver su evolución. " else "") +
-                "Los rangos de referencia son orientativos; usa los de tu laboratorio y consulta cualquier duda con tu médico.",
+                rememberStudyProfile().let { "Los rangos de referencia son orientativos; usa los de ${it.labName} y consulta cualquier duda con ${it.whoToAsk}." },
         )
     }
 }

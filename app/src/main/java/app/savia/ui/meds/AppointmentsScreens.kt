@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,6 +66,7 @@ import app.savia.ui.components.SectionCard
 import app.savia.ui.components.SectionLabel
 import app.savia.ui.nav.Routes
 import app.savia.ui.nav.back
+import app.savia.ui.studies.LastField
 import app.savia.ui.theme.SaviaTheme
 import app.savia.util.Fmt
 import app.savia.util.LocaleEs
@@ -85,6 +85,7 @@ private val specialties = listOf(
 fun AppointmentsScreen(nav: NavController) {
     val context = LocalContext.current
     val dao = Savia.db.appointments()
+    val txt = rememberMedsText()
     val all by remember { dao.observeAll() }.collectAsStateWithLifecycle(initialValue = null as List<Appointment>?)
     val now by rememberNowMillis()
 
@@ -97,7 +98,7 @@ fun AppointmentsScreen(nav: NavController) {
     }
 
     SaviaScaffold(
-        title = "Citas médicas",
+        title = txt.appointmentsTitle,
         onBack = { nav.back() },
         floatingActionButton = {
             ExtendedFloatingActionButton(
@@ -120,7 +121,7 @@ fun AppointmentsScreen(nav: NavController) {
                     EmptyState(
                         icon = Icons.Filled.Event,
                         title = "Aún no tienes citas",
-                        message = "Anota tus consultas y estudios programados. Savia puede avisarte un día antes y 2 horas antes.",
+                        message = txt.appointmentsEmpty,
                         actionLabel = "Agregar cita",
                         onAction = { nav.navigate(Routes.appointmentEdit()) },
                     )
@@ -224,6 +225,7 @@ private fun IconLine(icon: ImageVector, text: String, tint: Color = MaterialThem
 fun AppointmentEditScreen(nav: NavController, id: Long?) {
     val context = LocalContext.current
     val dao = Savia.db.appointments()
+    val txt = rememberMedsText()
 
     var loaded by rememberSaveable { mutableStateOf(id == null) }
     var title by rememberSaveable { mutableStateOf("") }
@@ -288,15 +290,17 @@ fun AppointmentEditScreen(nav: NavController, id: Long?) {
     ) { pad ->
         if (!loaded) return@SaviaScaffold
         Column(
-            Modifier.fillMaxSize().padding(pad).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+            // SaviaScaffold ya ajusta el contenido a la altura del teclado.
+            Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SectionCard(title = "Cita") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     val titleError = tried && title.isBlank()
-                    SaviaTextField(
+                    // Lo que sigue son selectores de fecha y hora: "Listo" cierra el teclado.
+                    LastField(
                         title, { title = it }, "Motivo",
-                        placeholder = "p. ej. Revisión anual",
+                        placeholder = txt.reasonPlaceholder,
                         isError = titleError,
                         supportingText = if (titleError) "Escribe el motivo de la cita" else null,
                     )
@@ -311,14 +315,17 @@ fun AppointmentEditScreen(nav: NavController, id: Long?) {
 
             SectionCard(title = "Con quién y dónde") {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SaviaTextField(doctor, { doctor = it }, "Profesional de salud", placeholder = "p. ej. Dra. Rivera")
-                    SaviaTextField(specialty, { specialty = it }, "Especialidad")
-                    if (specialty.isBlank()) {
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            for (s in specialties) SuggestionChip(onClick = { specialty = s }, label = { Text(s) })
+                    SaviaTextField(doctor, { doctor = it }, txt.doctorLabel, placeholder = txt.doctorPlaceholder)
+                    // En mascotas la especialidad no aplica; solo se muestra si la cita ya traía una.
+                    if (!txt.isPet || specialty.isNotBlank()) {
+                        SaviaTextField(specialty, { specialty = it }, "Especialidad")
+                        if (specialty.isBlank()) {
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (s in specialties) SuggestionChip(onClick = { specialty = s }, label = { Text(s) })
+                            }
                         }
                     }
-                    SaviaTextField(place, { place = it }, "Lugar", placeholder = "Consultorio, clínica u hospital")
+                    SaviaTextField(place, { place = it }, "Lugar", placeholder = txt.placePlaceholder)
                 }
             }
 
@@ -326,7 +333,7 @@ fun AppointmentEditScreen(nav: NavController, id: Long?) {
                 SaviaTextField(
                     notes, { notes = it }, "Notas y preguntas para la consulta",
                     singleLine = false, minLines = 3,
-                    placeholder = "Síntomas que quieres comentar, dudas, estudios que debes llevar…",
+                    placeholder = txt.notesPlaceholder,
                 )
             }
 

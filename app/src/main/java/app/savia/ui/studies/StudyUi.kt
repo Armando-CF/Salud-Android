@@ -61,6 +61,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import app.savia.Savia
 import app.savia.data.StudyCategories
 import app.savia.ui.components.Pill
 import app.savia.ui.theme.SaviaTheme
@@ -175,9 +176,14 @@ data class AttachmentRef(val id: Long, val fileName: String, val displayName: St
     val isPdf: Boolean get() = mime == "application/pdf" || fileName.endsWith(".pdf", ignoreCase = true)
 }
 
-/** Manejo de los archivos adjuntos en filesDir/attachments. */
+/**
+ * Manejo de los archivos adjuntos. Cada perfil tiene su propia carpeta (ver [Savia.attachmentsDir]):
+ * filesDir/attachments para el perfil 1 y filesDir/attachments/p<N> para los demás. Todas las
+ * funciones trabajan sobre el perfil ACTIVO en el momento de la llamada.
+ */
 object StudyFiles {
-    fun dir(context: Context): File = File(context.filesDir, "attachments").apply { mkdirs() }
+    @Suppress("UNUSED_PARAMETER")
+    fun dir(context: Context): File = Savia.attachmentsDir().apply { mkdirs() }
 
     fun file(context: Context, fileName: String): File = File(dir(context), fileName)
 
