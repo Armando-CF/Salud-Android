@@ -7,7 +7,7 @@ name: Publicar Savia Web en GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [Main]
     paths:
       - 'web/**'
       - 'app/src/main/assets/atlas.json'
