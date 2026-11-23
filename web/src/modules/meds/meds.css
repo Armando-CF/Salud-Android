@@ -1,0 +1,47 @@
+/* Estilos propios de Medicamentos, Citas y Vacunas (prefijo md-). */
+
+.md-dose { padding: 9px 0; }
+.md-dose + .md-dose { border-top: 1px solid var(--line); }
+.md-dose-time { width: 56px; flex: 0 0 auto; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.md-progress { flex: 1 1 0; height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.md-progress > div { height: 100%; border-radius: 999px; background: var(--good); transition: width 0.2s; }
+
+.md-badge { width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.md-badge.sm { width: 40px; height: 40px; border-radius: 13px; }
+
+.md-title { font-size: 17px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+
+/* Días de la semana: siete botones redondos de 44 px */
+.md-days { display: flex; justify-content: space-between; gap: 4px; }
+.md-day {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; cursor: pointer; font-weight: 700; font-size: 16px; padding: 0;
+  background: var(--surface-3); color: var(--muted);
+}
+.md-day.on { background: var(--primary); color: var(--on-primary); }
+
+/* Horas de toma: selector nativo + botón para quitar */
+.md-slot { display: flex; align-items: center; gap: 6px; }
+.md-slot .input { flex: 1 1 0; min-width: 0; }
+
+/* Fecha en bloque de una cita */
+.md-date {
+  width: 58px; flex: 0 0 auto; border-radius: 14px; padding: 8px 0; text-align: center; line-height: 1.15;
+  background: var(--primary-container); color: var(--on-primary-container);
+}
+.md-date.past { background: var(--surface-3); color: var(--muted); }
+.md-date b { display: block; font-size: 22px; }
+.md-date span { display: block; font-size: 12.5px; font-weight: 700; }
+.md-date small { display: block; font-size: 11.5px; }
+
+.md-line { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); margin-top: 2px; min-width: 0; }
+.md-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.md-expander {
+  display: flex; align-items: center; width: 100%; border: 0; background: transparent; padding: 10px 4px; min-height: 44px;
+  border-radius: 12px; cursor: pointer; font-weight: 700; font-size: 14px; color: var(--muted); text-align: left;
+}
+.md-expander:active { background: var(--surface-2); }
+
+.md-dim { opacity: 0.78; }
+.md-error { color: var(--error); font-size: 13px; }

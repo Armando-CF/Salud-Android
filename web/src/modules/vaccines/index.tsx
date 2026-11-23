@@ -1,12 +1,15 @@
-import { Page } from '../../ui'
+// Vacunas y desparasitación. Las pantallas se registran en App.tsx; lo demás es API para otros módulos (p. ej. Inicio).
+export { VaccinesPage, newVaccineRoute } from './VaccinesPage'
+export { VaccineEditPage } from './VaccineEditPage'
 
-/** Vacunas y desparasitación. */
-export function VaccinesPage() {
-  return <Page title="Vacunas"><p className="muted">Pendiente</p></Page>
-}
+export {
+  VaccineLogic, upcoming, dueSoon, dueStatus, dueText, isFulfilled, sameVaccine, nextDose, plusMonths, plusInterval, SOON_DAYS, DUE_STATUS_LABEL,
+  type DueItem, type DueStatus,
+} from './logic'
 
-/** Rutas /vacunas/nueva y /vacunas/:id */
-export function VaccineEditPage() {
-  return <Page title="Vacuna"><p className="muted">Pendiente</p></Page>
-}
+export {
+  VaccineCatalog, suggestions, filterSuggestions, findSuggestion, normalizeName, intervalLabel, inLabel, DOSES, VACUNA, DESP_INTERNA, DESP_EXTERNA, OTRO,
+  type VaccineSuggestion,
+} from './catalog'
 
+export { DueRow, VaccineTypeBadge, vaccineTypeIcon, vaccineTypeColor, dueStatusColor, vaccinesTitle, vaccinesDisclaimer } from './common'
