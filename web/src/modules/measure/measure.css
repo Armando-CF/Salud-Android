@@ -1,0 +1,29 @@
+/* Mediciones — estilos propios (prefijo mz-). */
+.mz-big { display: flex; align-items: baseline; gap: 6px; line-height: 1.05; }
+.mz-big b { font-size: 38px; font-weight: 700; letter-spacing: -0.02em; }
+.mz-big span { font-size: 17px; font-weight: 600; color: var(--muted); }
+.mz-title { font-size: 26px; font-weight: 700; line-height: 1.15; }
+.mz-value { font-size: 17px; font-weight: 700; }
+.mz-progress { height: 8px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.mz-progress > div { height: 100%; border-radius: 999px; background: var(--primary); }
+.mz-progress.done > div { background: var(--good); }
+
+.mz-rows { padding: 6px; }
+.mz-rows .card-body { gap: 0; }
+.mz-row { display: flex; align-items: center; gap: 13px; padding: 10px 6px; border-radius: 14px; min-height: 64px; cursor: pointer; min-width: 0; }
+.mz-row:active { background: var(--surface-2); }
+.mz-row + .mz-row { border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); border-radius: 0; }
+.mz-row .ic {
+  width: 42px; height: 42px; border-radius: 13px; display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--primary);
+}
+.mz-add {
+  width: 44px; height: 44px; border-radius: 50%; border: 0; flex: 0 0 auto; cursor: pointer; padding: 0;
+  background: var(--secondary-container); color: var(--on-secondary-container); display: inline-flex; align-items: center; justify-content: center;
+}
+.mz-add:active { filter: brightness(0.94); }
+
+.mz-history { padding: 12px 14px; }
+.mz-history .card-body { gap: 0; }
+.mz-notes { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
+.mz-empty-chart { height: 160px; display: flex; align-items: center; justify-content: center; text-align: center; color: var(--muted); }
