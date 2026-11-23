@@ -10,11 +10,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Accessibility
@@ -31,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,12 +47,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import app.savia.Savia
-import app.savia.data.SymptomCatalog
 import app.savia.data.SymptomEntry
 import app.savia.ui.components.ChoiceChips
 import app.savia.ui.components.ConfirmDialog
@@ -63,6 +67,7 @@ import app.savia.ui.components.SaviaScaffold
 import app.savia.ui.components.SaviaTextField
 import app.savia.ui.components.SectionCard
 import app.savia.ui.components.SectionLabel
+import app.savia.ui.components.dismissKeyboardOnTapOutside
 import app.savia.ui.nav.Routes
 import app.savia.ui.nav.back
 import app.savia.ui.theme.SaviaTheme
@@ -82,6 +87,8 @@ import kotlin.math.roundToInt
 fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLabel: String?, name: String?) {
     val dao = Savia.db.symptoms()
     val isNew = id == null
+    val kit = remember { SymptomKit.current() }
+    val focus = LocalFocusManager.current
 
     var loaded by rememberSaveable { mutableStateOf(isNew) }
     var missing by rememberSaveable { mutableStateOf(false) }
@@ -185,26 +192,32 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
         }
         if (!loaded) return@SaviaScaffold
 
+        // SaviaScaffold ya ajusta el contenido a la altura del teclado; el formulario completo se desplaza.
         Column(
-            Modifier.padding(pad).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // ── Qué
-            SectionCard(title = "¿Qué sientes?") {
-                SaviaTextField(
+            SectionCard(title = kit.whatTitle) {
+                // El nombre es el único dato obligatorio: la tecla "Listo" cierra el teclado y deja ver el resto.
+                OutlinedTextField(
                     value = nameText,
                     onValueChange = { nameText = it.take(60); nameError = false },
-                    label = "Síntoma o molestia",
-                    placeholder = "Ej. Dolor de cabeza",
+                    label = { Text(kit.nameLabel) },
+                    placeholder = { Text(kit.namePlaceholder) },
                     isError = nameError,
-                    supportingText = if (nameError) "Escribe o elige qué sientes" else null,
+                    supportingText = if (nameError) ({ Text(kit.nameError) }) else null,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
+                    modifier = Modifier.fillMaxWidth(),
                 )
                 val q = SymptomStats.norm(nameText)
                 val suggestions = remember(q, used) {
                     if (q.isEmpty()) {
                         used.take(8)
                     } else {
-                        (used + SymptomCatalog.all).distinctBy { SymptomStats.norm(it) }
+                        (used + kit.all).distinctBy { SymptomStats.norm(it) }
                             .filter { SymptomStats.norm(it).contains(q) && SymptomStats.norm(it) != q }
                             .take(8)
                     }
@@ -225,7 +238,7 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
                 }
                 AnimatedVisibility(visible = showCatalog) {
                     Column {
-                        for ((group, names) in SymptomCatalog.groups) {
+                        for ((group, names) in kit.groups) {
                             SectionLabel(group)
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 for (s in names) {
@@ -243,18 +256,17 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
                     label = "Intensidad",
                     value = intensity,
                     onChange = { intensity = it },
-                    valueText = "$intensity · ${SymptomCatalog.intensityLabel(intensity)}",
+                    valueText = "$intensity · ${kit.intensityLabel(intensity)}",
                     color = SaviaTheme.colors.intensity(intensity),
                 )
                 Row {
                     Text("1 · apenas se nota", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                    Text("10 · insoportable", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(kit.intensityHigh, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (intensity >= 9) {
                     Spacer(Modifier.height(10.dp))
                     InfoNote(
-                        "Si el dolor es muy fuerte, apareció de repente o no cede, busca atención médica o llama a emergencias. " +
-                            "Esta app no sustituye una valoración profesional.",
+                        kit.alarmNote,
                         color = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer,
                     )
@@ -280,14 +292,14 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
                 }
             }
 
-            // ── Dónde
-            SectionCard(title = "¿En qué parte del cuerpo?") {
+            // ── Dónde (solo si hay figura para este perfil: personas, y mascotas perro o gato)
+            if (kit.canPickBodyRegion || regLabel != null) SectionCard(title = kit.whereTitle) {
                 val label = regLabel
                 if (label != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         InputChip(
                             selected = true,
-                            onClick = { nav.navigate(Routes.bodyPick()) },
+                            onClick = { if (kit.canPickBodyRegion) nav.navigate(Routes.bodyPick()) },
                             label = { Text(label) },
                             leadingIcon = { Icon(Icons.Filled.Accessibility, contentDescription = null, modifier = Modifier.size(18.dp)) },
                             modifier = Modifier.weight(1f, fill = false),
@@ -295,11 +307,13 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
                         Spacer(Modifier.width(8.dp))
                         TextButton(onClick = { regId = null; regLabel = null }) { Text("Quitar") }
                     }
-                    Text(
-                        "Toca la zona para cambiarla en el modelo del cuerpo.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (kit.canPickBodyRegion) {
+                        Text(
+                            "Toca la zona para cambiarla en el modelo del cuerpo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 } else {
                     OutlinedButton(onClick = { nav.navigate(Routes.bodyPick()) }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Filled.Accessibility, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -307,7 +321,7 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
                         Text("Elegir en el cuerpo")
                     }
                     Text(
-                        "Opcional. Señala en el modelo dónde lo sientes; ahí verás también cómo se llama la zona.",
+                        kit.whereHint,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp),
@@ -318,7 +332,7 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
             // ── Desencadenantes
             SectionCard(title = "¿Qué pudo provocarlo?") {
                 val selected = SymptomStats.splitTags(tagsCsv)
-                val options = SymptomCatalog.triggers + selected.filter { it !in SymptomCatalog.triggers }
+                val options = kit.triggers + selected.filter { it !in kit.triggers }
                 MultiChoiceChips(
                     options = options.map { it to it },
                     selected = selected.toSet(),
@@ -346,7 +360,7 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
                     label = "Detalles (opcional)",
                     singleLine = false,
                     minLines = 3,
-                    placeholder = "Cómo empezó, qué lo alivia o empeora, qué tomaste…",
+                    placeholder = kit.notesPlaceholder,
                 )
             }
 
@@ -383,26 +397,33 @@ fun SymptomEditScreen(nav: NavController, id: Long?, regionId: String?, regionLa
 
     if (showCustomTag) {
         var custom by remember { mutableStateOf("") }
+        val addCustom = {
+            val tag = custom.trim().replaceFirstChar { it.titlecase(LocaleEs) }
+            if (tag.isNotEmpty()) {
+                val selected = SymptomStats.splitTags(tagsCsv)
+                if (selected.none { SymptomStats.norm(it) == SymptomStats.norm(tag) }) {
+                    tagsCsv = (selected + tag).joinToString(",")
+                }
+            }
+            showCustomTag = false
+        }
         AlertDialog(
             onDismissRequest = { showCustomTag = false },
             title = { Text("Otro desencadenante") },
             text = {
-                SaviaTextField(custom, { custom = it.replace(",", " ").take(30) }, "¿Qué pudo provocarlo?", placeholder = "Ej. Cafeína")
+                // Único campo del diálogo: la tecla "Listo" lo agrega y cierra.
+                OutlinedTextField(
+                    value = custom,
+                    onValueChange = { custom = it.replace(",", " ").take(30) },
+                    label = { Text("¿Qué pudo provocarlo?") },
+                    placeholder = { Text(kit.customTriggerExample) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { addCustom() }),
+                    modifier = Modifier.fillMaxWidth().dismissKeyboardOnTapOutside(),
+                )
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val tag = custom.trim().replaceFirstChar { it.titlecase(LocaleEs) }
-                        if (tag.isNotEmpty()) {
-                            val selected = SymptomStats.splitTags(tagsCsv)
-                            if (selected.none { SymptomStats.norm(it) == SymptomStats.norm(tag) }) {
-                                tagsCsv = (selected + tag).joinToString(",")
-                            }
-                        }
-                        showCustomTag = false
-                    },
-                ) { Text("Agregar") }
-            },
+            confirmButton = { TextButton(onClick = addCustom) { Text("Agregar") } },
             dismissButton = { TextButton(onClick = { showCustomTag = false }) { Text("Cancelar") } },
         )
     }

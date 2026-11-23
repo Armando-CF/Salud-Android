@@ -63,6 +63,7 @@ fun MeasurementsScreen(nav: NavController, onBack: (() -> Unit)?) {
     val height = profile?.heightCm
     val summary = remember(weights, height, profile?.goalWeightKg) { MeasureStats.weightSummary(weights, height, profile?.goalWeightKg) }
     val latestByType = remember(latest) { latest.associateBy { it.type } }
+    val who = rememberMeasureWho(profile)
 
     SaviaScaffold("Mediciones", onBack) { pad ->
         Column(
@@ -71,16 +72,19 @@ fun MeasurementsScreen(nav: NavController, onBack: (() -> Unit)?) {
         ) {
             WeightCard(
                 summary = summary,
+                who = who,
                 onOpen = { nav.navigate(Routes.measure(MeasureType.WEIGHT.key)) },
                 onAdd = { nav.navigate(Routes.measure(MeasureType.WEIGHT.key, add = true)) },
             )
             SectionLabel("Otras mediciones")
             SectionCard(contentPadding = 6.dp) {
-                val others = MeasureType.entries.filter { it != MeasureType.WEIGHT }
+                // Solo los tipos que aplican al perfil (las mascotas no llevan presión, glucosa, IMC…).
+                val others = MeasureRefs.types(who.isPet).filter { it != MeasureType.WEIGHT }
                 others.forEachIndexed { i, type ->
                     MeasureRow(
                         type = type,
                         latest = latestByType[type.key],
+                        who = who,
                         heightCm = height,
                         onOpen = { nav.navigate(Routes.measure(type.key)) },
                         onAdd = { nav.navigate(Routes.measure(type.key, add = true)) },
@@ -90,14 +94,22 @@ fun MeasurementsScreen(nav: NavController, onBack: (() -> Unit)?) {
                     }
                 }
             }
-            InfoNote("Las clasificaciones son orientativas y no sustituyen la valoración de un profesional de la salud.")
+            InfoNote(
+                when {
+                    who.isPet -> MeasureRefs.PET_GENERAL_NOTE
+                    who.isMinor -> "En niñas, niños y adolescentes los valores normales cambian con la edad: aquí se guardan y grafican, " +
+                        "pero peso, presión y pulso no se clasifican con rangos de personas adultas. Su pediatra es quien los interpreta."
+                    else -> "Las clasificaciones son orientativas y no sustituyen la valoración de un profesional de la salud."
+                },
+            )
         }
     }
 }
 
 @Composable
-private fun WeightCard(summary: WeightSummary?, onOpen: () -> Unit, onAdd: () -> Unit) {
+private fun WeightCard(summary: WeightSummary?, who: MeasureWho, onOpen: () -> Unit, onAdd: () -> Unit) {
     val colors = SaviaTheme.colors
+    val pet = who.isPet
     SectionCard(
         title = "Peso",
         onClick = onOpen,
@@ -105,7 +117,8 @@ private fun WeightCard(summary: WeightSummary?, onOpen: () -> Unit, onAdd: () ->
     ) {
         if (summary == null) {
             Text(
-                "Aún no registras tu peso. Anótalo con regularidad para ver tu tendencia, tu IMC y cuánto te falta para tu meta.",
+                if (pet) "Aún no registras el peso de ${who.name}. Anótalo con regularidad (por ejemplo en cada visita al veterinario) para ver su tendencia."
+                else "Aún no registras tu peso. Anótalo con regularidad para ver tu tendencia, tu IMC y cuánto te falta para tu meta.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -120,9 +133,10 @@ private fun WeightCard(summary: WeightSummary?, onOpen: () -> Unit, onAdd: () ->
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(Fmt.num(summary.latest, 1), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold)
+                    val (number, unit) = MeasureRefs.weightParts(summary.latest, pet)
+                    Text(number, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(6.dp))
-                    Text("kg", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+                    Text(unit, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
                 }
                 Text(
                     Fmt.relativeDay(summary.latestTimestamp.millisToEpochDay()),
@@ -136,26 +150,32 @@ private fun WeightCard(summary: WeightSummary?, onOpen: () -> Unit, onAdd: () ->
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatTile("7 días", summary.change7?.let { Fmt.signed(it, 1) + " kg" } ?: "—", Modifier.weight(1f))
-            StatTile("30 días", summary.change30?.let { Fmt.signed(it, 1) + " kg" } ?: "—", Modifier.weight(1f))
-            val bmi = summary.bmi
-            if (bmi != null) {
-                StatTile("IMC", Fmt.num(bmi, 1), Modifier.weight(1f), valueColor = summary.bmiAssessment?.level?.color() ?: MaterialTheme.colorScheme.onSurface)
-            } else {
-                StatTile("IMC", "—", Modifier.weight(1f))
+            StatTile("7 días", summary.change7?.let { MeasureRefs.weightDelta(it, pet) } ?: "—", Modifier.weight(1f))
+            StatTile("30 días", summary.change30?.let { MeasureRefs.weightDelta(it, pet) } ?: "—", Modifier.weight(1f))
+            if (MeasureRefs.showBmi(who)) {
+                val bmi = summary.bmi
+                // La categoría (y su color) solo aplica a personas adultas.
+                val bmiColor = if (MeasureRefs.showBmiCategory(who)) summary.bmiAssessment?.level?.color() else null
+                StatTile("IMC", bmi?.let { Fmt.num(it, 1) } ?: "—", Modifier.weight(1f), valueColor = bmiColor ?: MaterialTheme.colorScheme.onSurface)
             }
         }
         val assessment = summary.bmiAssessment
-        if (assessment != null) {
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.height(8.dp))
+        when {
+            pet -> MeasureRefs.note(who, MeasureType.WEIGHT)?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            who.isMinor -> Text(
+                if (summary.bmi != null) MeasureRefs.MINOR_BMI_NOTE else "Agrega su estatura en el detalle de peso para calcular el IMC.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            assessment != null -> Row(verticalAlignment = Alignment.CenterVertically) {
                 Pill(assessment.label, assessment.level.color())
                 Spacer(Modifier.width(8.dp))
                 Text("según tu IMC (orientativo)", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-        } else {
-            Spacer(Modifier.height(8.dp))
-            Text(
+            else -> Text(
                 "Agrega tu estatura en el detalle de peso para calcular tu IMC.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -166,9 +186,9 @@ private fun WeightCard(summary: WeightSummary?, onOpen: () -> Unit, onAdd: () ->
         if (goal != null && toGoal != null) {
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Meta: ${Fmt.num(goal, 1)} kg", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                Text("Meta: ${MeasureRefs.weightText(goal, pet)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
                 Text(
-                    if (summary.goalReached) "¡Meta alcanzada!" else "Faltan ${Fmt.num(abs(toGoal), 1)} kg",
+                    if (summary.goalReached) "¡Meta alcanzada!" else "Faltan ${MeasureRefs.weightText(abs(toGoal), pet)}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = if (summary.goalReached) colors.good else MaterialTheme.colorScheme.primary,
@@ -194,7 +214,7 @@ private fun WeightCard(summary: WeightSummary?, onOpen: () -> Unit, onAdd: () ->
 }
 
 @Composable
-private fun MeasureRow(type: MeasureType, latest: Measurement?, heightCm: Double?, onOpen: () -> Unit, onAdd: () -> Unit) {
+private fun MeasureRow(type: MeasureType, latest: Measurement?, who: MeasureWho, heightCm: Double?, onOpen: () -> Unit, onAdd: () -> Unit) {
     val tint = MaterialTheme.colorScheme.primary
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onOpen).padding(horizontal = 8.dp, vertical = 10.dp),
@@ -220,7 +240,7 @@ private fun MeasureRow(type: MeasureType, latest: Measurement?, heightCm: Double
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                val a = MeasureStats.assess(type, latest, heightCm)
+                val a = MeasureRefs.assess(who, type, latest, heightCm)
                 if (a != null) {
                     Spacer(Modifier.height(4.dp))
                     Pill(a.label, a.level.color())

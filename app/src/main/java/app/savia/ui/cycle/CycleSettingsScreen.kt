@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import app.savia.Savia
+import app.savia.ui.wellbeing.PeopleOnlyScreen
 import app.savia.reminders.ReminderScheduler
 import app.savia.ui.components.InfoNote
 import app.savia.ui.components.SaviaScaffold
@@ -38,6 +39,10 @@ import app.savia.ui.nav.back
 
 @Composable
 fun CycleSettingsScreen(nav: NavController) {
+    if (Savia.isPet) {
+        PeopleOnlyScreen("Ajustes del ciclo") { nav.back() }
+        return
+    }
     val context = LocalContext.current
     val prefs = Savia.prefs
     val enabled by prefs.cycleEnabled.flow.collectAsStateWithLifecycle()

@@ -47,6 +47,10 @@ import app.savia.util.Fmt
 
 @Composable
 fun CycleStatsScreen(nav: NavController) {
+    if (app.savia.Savia.isPet) {
+        app.savia.ui.wellbeing.PeopleOnlyScreen("Estadísticas del ciclo") { nav.back() }
+        return
+    }
     val state = rememberCycleState()
     SaviaScaffold(title = "Estadísticas del ciclo", onBack = { nav.back() }) { pad ->
         if (!state.loaded) return@SaviaScaffold

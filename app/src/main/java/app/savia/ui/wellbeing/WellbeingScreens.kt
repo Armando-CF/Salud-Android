@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -62,6 +61,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import app.savia.Savia
 import app.savia.data.DailyLog
+import app.savia.data.SaviaDb
 import app.savia.ui.components.ChartLegend
 import app.savia.ui.components.ChartPoint
 import app.savia.ui.components.ChartRange
@@ -125,21 +125,25 @@ object WellbeingScale {
 
 /** Escribe los registros diarios en orden (un solo consumidor), para que el guardado automático nunca se desordene. */
 private object WellbeingWriter {
-    private val channel = Channel<DailyLog>(Channel.UNLIMITED)
+    private val channel = Channel<Pair<SaviaDb, DailyLog>>(Channel.UNLIMITED)
 
     init {
         Savia.scope.launch(Dispatchers.IO) {
-            for (log in channel) {
+            for ((db, log) in channel) {
                 runCatching {
-                    val dao = Savia.db.dailyLogs()
+                    val dao = db.dailyLogs()
                     if (WellbeingScale.isEmpty(log)) dao.deleteDay(log.epochDay) else dao.save(log.copy(notes = log.notes.trim()))
                 }
             }
         }
     }
 
-    fun submit(log: DailyLog) {
-        channel.trySend(log)
+    /**
+     * La base se toma AL ENVIAR (la del perfil en el que se hizo la edición), no al escribir: así un cambio
+     * de perfil inmediatamente después nunca manda el registro a la base de otro perfil.
+     */
+    fun submit(log: DailyLog, db: SaviaDb = Savia.db) {
+        channel.trySend(db to log)
     }
 }
 
@@ -150,7 +154,12 @@ private object WellbeingWriter {
  */
 @Composable
 fun WellbeingScreen(nav: NavController, initialDay: Long? = null) {
-    val dao = Savia.db.dailyLogs()
+    if (Savia.isPet) {
+        PeopleOnlyScreen("Bienestar diario") { nav.back() }
+        return
+    }
+    val db = remember { Savia.db }
+    val dao = db.dailyLogs()
     val t = today()
     var day by rememberSaveable { mutableLongStateOf((initialDay ?: t).coerceAtMost(t)) }
     var log by remember { mutableStateOf<DailyLog?>(null) }
@@ -163,12 +172,13 @@ fun WellbeingScreen(nav: NavController, initialDay: Long? = null) {
 
     val update: (DailyLog) -> Unit = { new ->
         log = new
-        WellbeingWriter.submit(new)
+        WellbeingWriter.submit(new, db)
     }
 
     SaviaScaffold(title = "Bienestar diario", onBack = { nav.back() }) { pad ->
+        // SaviaScaffold ya ajusta el contenido a la altura del teclado (la nota del día es el único campo de texto).
         Column(
-            Modifier.padding(pad).fillMaxSize().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             DayNavigator(day = day, today = t, onPrev = { day -= 1 }, onNext = { if (day < t) day += 1 }, onPick = { showPicker = true })

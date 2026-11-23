@@ -54,7 +54,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import app.savia.Savia
-import app.savia.data.SymptomCatalog
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import app.savia.data.SymptomEntry
 import app.savia.ui.components.BarChart
 import app.savia.ui.components.BarEntry
@@ -85,6 +88,7 @@ import kotlin.math.roundToInt
 fun SymptomsScreen(nav: NavController, onBack: (() -> Unit)?, initialTab: Int = 0) {
     val entries by remember { Savia.db.symptoms().observeAll() }.collectAsStateWithLifecycle(initialValue = null)
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
+    val kit = remember { SymptomKit.current() }
 
     SaviaScaffold(
         title = "Síntomas",
@@ -104,7 +108,8 @@ fun SymptomsScreen(nav: NavController, onBack: (() -> Unit)?, initialTab: Int = 
                 list.isEmpty() -> EmptyState(
                     icon = Icons.Filled.EditNote,
                     title = "Aún no registras síntomas",
-                    message = "Cuando algo te moleste, anótalo aquí: qué sientes, qué tan fuerte y en qué parte del cuerpo. " +
+                    message = if (kit.isPet) kit.emptyMessage
+                    else "Cuando algo te moleste, anótalo aquí: qué sientes, qué tan fuerte y en qué parte del cuerpo. " +
                         "Con el tiempo podrás ver patrones y contárselos mejor a tu médico.",
                     actionLabel = "Registrar un síntoma",
                     onAction = { nav.navigate(Routes.symptomEdit()) },
@@ -137,6 +142,7 @@ private fun HistoryTab(list: List<SymptomEntry>, nav: NavController) {
         list.filter { (nameFilter == null || it.name == nameFilter) && SymptomStats.matches(it, query) }
     }
     val grouped = remember(filtered) { filtered.groupBy { it.timestamp.millisToEpochDay() }.toList() }
+    val focus = LocalFocusManager.current
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -149,6 +155,9 @@ private fun HistoryTab(list: List<SymptomEntry>, nav: NavController) {
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
+                // La tecla "Buscar" del teclado lo cierra para dejar ver los resultados.
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
                 placeholder = { Text("Buscar por síntoma, zona o nota") },
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
@@ -245,7 +254,7 @@ fun SymptomListItem(entry: SymptomEntry, onClick: () -> Unit, modifier: Modifier
                 )
                 val meta = buildList {
                     add(if (showDate) Fmt.relativeDateTime(entry.timestamp) else Fmt.time(entry.timestamp))
-                    add(SymptomCatalog.intensityLabel(entry.intensity))
+                    add(SymptomKit.current().intensityLabel(entry.intensity))
                     entry.durationMin?.let { add("duró ${Fmt.duration(it)}") }
                 }.joinToString(" · ")
                 Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -335,7 +344,7 @@ private fun SummaryTab(list: List<SymptomEntry>) {
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                "${Fmt.num(a, 1)} · ${SymptomCatalog.intensityLabel(a.roundToInt())}",
+                                "${Fmt.num(a, 1)} · ${SymptomKit.current().intensityLabel(a.roundToInt())}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = SaviaTheme.colors.intensity(a.roundToInt()),
