@@ -18,6 +18,7 @@ import app.savia.R
 import app.savia.Savia
 import app.savia.cycle.CycleEngine
 import app.savia.data.MedIntake
+import app.savia.data.SaviaDb
 import app.savia.ui.meds.MedSchedule
 import app.savia.util.today
 import kotlinx.coroutines.Dispatchers
@@ -26,10 +27,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Programa los recordatorios (medicamentos, citas, periodo, autoexploración).
+ * Programa los recordatorios (medicamentos, citas, periodo, autoexploración y vacunas) de TODOS los
+ * perfiles: cada persona o mascota tiene su propia base y sus propios ajustes, y aquí se recorren todas.
  *
- * Funciona con UNA sola alarma que siempre apunta al siguiente aviso pendiente. Cuando suena,
- * [ReminderReceiver] publica las notificaciones que tocan y vuelve a programar la siguiente.
+ * Funciona con UNA sola alarma que siempre apunta al siguiente aviso pendiente (de cualquier perfil).
+ * Cuando suena, [ReminderReceiver] publica las notificaciones que tocan y vuelve a programar la siguiente.
+ * Si hay más de un perfil, cada aviso lleva el nombre de a quién corresponde ("Firulais · …").
  */
 object ReminderScheduler {
     internal const val ACTION_ALARM = "app.savia.reminders.ALARM"
@@ -38,6 +41,13 @@ object ReminderScheduler {
     internal const val EXTRA_DAY = "day"
     internal const val EXTRA_SLOT = "slot"
     internal const val EXTRA_NOTIFICATION_ID = "notification_id"
+
+    /**
+     * Extra (Int) con el id del perfil dueño del aviso. Va en la acción "Tomada" y también en el
+     * intent que abre [MainActivity] al tocar la notificación (por si la actividad quiere ofrecer
+     * cambiar a ese perfil; aquí NO se cambia de perfil automáticamente).
+     */
+    const val EXTRA_PROFILE_ID = "savia_profile_id"
 
     private const val SP = "savia_reminders"
     private const val KEY_LAST_CHECK = "last_check"
@@ -79,19 +89,42 @@ object ReminderScheduler {
         // Si el reloj se movió hacia atrás, "last" queda en el futuro: se parte de ahora.
         val after = if (last > until) now else maxOf(last, now - lookbackMs)
 
-        val input = loadInput(app, after, until)
-        for (e in ReminderPlanner.eventsBetween(input, after, until)) {
+        val inputs = loadInputs(app, after, until)
+        for (e in ReminderPlanner.eventsBetween(inputs, after, until)) {
             if (e.kind == ReminderKind.MED && e.at < now - MED_MAX_AGE_MS) continue
             ReminderNotifier.show(app, e)
         }
         sp.edit().putLong(KEY_LAST_CHECK, until).apply()
-        setAlarm(app, ReminderPlanner.nextEventTime(input, until))
+        setAlarm(app, ReminderPlanner.nextEventTime(inputs, until))
     }
 
-    private suspend fun loadInput(app: Context, after: Long, until: Long): ReminderInput {
-        val db = Savia.db
-        val prefs = Savia.prefs
+    /**
+     * Lee los datos de cada perfil. Un perfil que falle al leerse (o que se elimine a media lectura)
+     * simplemente no aporta avisos; nunca impide los de los demás.
+     */
+    internal suspend fun loadInputs(app: Context, after: Long, until: Long): List<ReminderInput> {
+        val ids = Savia.profileIds
+        val multi = ids.size > 1
+        val out = ArrayList<ReminderInput>(ids.size)
+        for (id in ids) {
+            if (id !in Savia.profileIds) continue
+            val input = runCatching {
+                val name = if (multi) Savia.loadInfo(id).displayName else null
+                loadInput(app, id, name, after, until)
+            }.getOrNull() ?: continue
+            if (id in Savia.profileIds) out += input
+        }
+        return out
+    }
+
+    /** Clave del ancla de autoexploración: la original para el perfil 1 y con sufijo para los demás. */
+    private fun selfExamAnchorKey(profileId: Int) = if (profileId == 1) KEY_SELF_EXAM_ANCHOR else "${KEY_SELF_EXAM_ANCHOR}_p$profileId"
+
+    private suspend fun loadInput(app: Context, profileId: Int, profileName: String?, after: Long, until: Long): ReminderInput {
+        val db: SaviaDb = Savia.dbFor(profileId)
+        val prefs = Savia.prefsFor(profileId)
         val sp = app.getSharedPreferences(SP, Context.MODE_PRIVATE)
+        val anchorKey = selfExamAnchorKey(profileId)
         val today = today()
 
         val meds = db.medications().getAll()
@@ -112,20 +145,28 @@ object ReminderScheduler {
         val selfExamBase: Long? = if (prefs.selfExamReminder.value) {
             val lastExam = db.selfExams().getAll().maxOfOrNull { it.epochDay }
             if (lastExam != null) {
-                if (sp.contains(KEY_SELF_EXAM_ANCHOR)) sp.edit().remove(KEY_SELF_EXAM_ANCHOR).apply()
+                if (sp.contains(anchorKey)) sp.edit().remove(anchorKey).apply()
                 lastExam
             } else {
                 // Sin registros: el primer aviso es mañana y luego cada 30 días.
                 val fresh = today + 1 - ReminderPlanner.SELF_EXAM_EVERY_DAYS
-                if (!sp.contains(KEY_SELF_EXAM_ANCHOR)) sp.edit().putLong(KEY_SELF_EXAM_ANCHOR, fresh).apply()
-                sp.getLong(KEY_SELF_EXAM_ANCHOR, fresh)
+                if (!sp.contains(anchorKey)) sp.edit().putLong(anchorKey, fresh).apply()
+                sp.getLong(anchorKey, fresh)
             }
         } else {
-            if (sp.contains(KEY_SELF_EXAM_ANCHOR)) sp.edit().remove(KEY_SELF_EXAM_ANCHOR).apply()
+            if (sp.contains(anchorKey)) sp.edit().remove(anchorKey).apply()
             null
         }
 
-        return ReminderInput(meds, intakes, db.appointments().getAll(), periodStarts, selfExamBase)
+        // Solo interesan las vacunas con próxima fecha; el resto de registros sirve para saber si ya se cumplió.
+        val allVaccines = db.vaccinations().getAll()
+        val vaccines = if (allVaccines.any { it.remind && it.nextDueEpochDay != null }) allVaccines else emptyList()
+
+        return ReminderInput(
+            meds = meds, intakes = intakes, appointments = db.appointments().getAll(),
+            periodStarts = periodStarts, selfExamBaseDay = selfExamBase, vaccinations = vaccines,
+            profileId = profileId, profileName = profileName,
+        )
     }
 
     private fun setAlarm(app: Context, at: Long?) {
@@ -161,9 +202,12 @@ object ReminderScheduler {
         return NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 
-    /** Quita la notificación de una toma (p. ej. al marcarla como tomada dentro de la app). */
-    fun cancelDoseNotification(context: Context, medId: Long, epochDay: Long, slot: String) {
-        val id = ReminderEvent(0, ReminderKind.MED, medId, epochDay, slot, "", "").notificationId
+    /**
+     * Quita la notificación de una toma (p. ej. al marcarla como tomada dentro de la app).
+     * @param profileId perfil dueño de la toma; por defecto el activo, que es el que se ve en pantalla.
+     */
+    fun cancelDoseNotification(context: Context, medId: Long, epochDay: Long, slot: String, profileId: Int = Savia.activeId.value) {
+        val id = ReminderEvent(0, ReminderKind.MED, medId, epochDay, slot, "", "", profileId).notificationId
         runCatching { NotificationManagerCompat.from(context.applicationContext).cancel(id) }
     }
 }
@@ -189,7 +233,7 @@ internal object ReminderNotifier {
         )
         nm.createNotificationChannel(
             NotificationChannel(CH_HEALTH, "Recordatorios de salud", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Ciclo menstrual y autoexploración"
+                description = "Vacunas, ciclo menstrual y autoexploración"
             },
         )
     }
@@ -197,9 +241,12 @@ internal object ReminderNotifier {
     fun show(app: Context, e: ReminderEvent) {
         if (!ReminderScheduler.notificationsAllowed(app)) return
         ensureChannels(app)
+        // Un PendingIntent por perfil (código de solicitud = id de perfil) para que cada uno conserve su extra.
         val open = PendingIntent.getActivity(
-            app, 0,
-            Intent(app, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            app, e.profileId,
+            Intent(app, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(ReminderScheduler.EXTRA_PROFILE_ID, e.profileId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val isAppointment = e.kind == ReminderKind.APPT_DAY_BEFORE || e.kind == ReminderKind.APPT_SOON
@@ -241,6 +288,7 @@ internal object ReminderNotifier {
                     .putExtra(ReminderScheduler.EXTRA_MED_ID, e.refId)
                     .putExtra(ReminderScheduler.EXTRA_DAY, e.epochDay)
                     .putExtra(ReminderScheduler.EXTRA_SLOT, e.slot)
+                    .putExtra(ReminderScheduler.EXTRA_PROFILE_ID, e.profileId)
                     .putExtra(ReminderScheduler.EXTRA_NOTIFICATION_ID, e.notificationId),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
@@ -279,8 +327,11 @@ class ReminderReceiver : BroadcastReceiver() {
         val day = intent.getLongExtra(ReminderScheduler.EXTRA_DAY, -1)
         val slot = intent.getStringExtra(ReminderScheduler.EXTRA_SLOT).orEmpty()
         val notificationId = intent.getIntExtra(ReminderScheduler.EXTRA_NOTIFICATION_ID, 0)
-        if (medId > 0 && day >= 0 && slot.isNotEmpty()) {
-            val dao = Savia.db.medications()
+        // Las notificaciones anteriores a los perfiles múltiples no traen el extra: son del perfil 1.
+        val profileId = intent.getIntExtra(ReminderScheduler.EXTRA_PROFILE_ID, 1)
+        if (medId > 0 && day >= 0 && slot.isNotEmpty() && profileId in Savia.profileIds) {
+            // La toma se guarda en la base del perfil dueño del aviso, aunque no sea el perfil activo.
+            val dao = Savia.dbFor(profileId).medications()
             val exists = dao.getIntakesOfDay(day).any { it.medicationId == medId && it.slot == slot }
             if (!exists && dao.get(medId) != null) {
                 dao.insertIntake(
