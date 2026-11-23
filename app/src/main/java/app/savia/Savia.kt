@@ -50,6 +50,7 @@ object Savia {
     private val infoById = ConcurrentHashMap<Int, ProfileInfo>()
     private var inMemory = false
     private var watcher: CoroutineScope? = null
+    private val activeLock = Any()
 
     /** Vive mientras viva el proceso: las escrituras no se cancelan al salir de una pantalla. */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -89,7 +90,7 @@ object Savia {
         inMemory = database != null
         if (database != null) dbs[1] = database
         for (id in profiles.ids.value) infoById[id] = profiles.cachedInfo(id)
-        _active.value = infoOf(profiles.activeId.value)
+        synchronized(activeLock) { _active.value = infoOf(profiles.activeId.value) }
         watchProfiles()
     }
 
@@ -122,7 +123,8 @@ object Savia {
                 try {
                     summaries.collect { list ->
                         for (i in list) { infoById[i.id] = i; profiles.cacheInfo(i) }
-                        list.firstOrNull { it.id == profiles.activeId.value }?.let { _active.value = it }
+                        // Bajo el mismo candado que switchTo: así nunca se pisa el perfil recién activado con uno viejo.
+                        synchronized(activeLock) { _active.value = infoOf(profiles.activeId.value) }
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -136,8 +138,10 @@ object Savia {
     /** Cambia el perfil activo. La interfaz se recrea sola (MainActivity observa [activeId]). */
     fun switchTo(id: Int) {
         if (id !in profiles.ids.value) return
-        _active.value = infoOf(id)
-        profiles.setActive(id)
+        synchronized(activeLock) {
+            profiles.setActive(id)
+            _active.value = infoOf(id)
+        }
     }
 
     /**

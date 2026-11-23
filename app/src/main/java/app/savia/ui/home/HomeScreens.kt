@@ -264,7 +264,7 @@ fun HomeScreen(nav: NavController) {
             }
 
             // Vacunas pendientes o próximas (30 días)
-            val dueVaccines = remember(vaccines, t) { VaccineLogic.upcoming(vaccines, t).filter { it.dueDay <= t + 30 }.take(2) }
+            val dueVaccines = remember(vaccines, t) { VaccineLogic.dueSoon(vaccines, t, 30).take(2) }
             for (d in dueVaccines) {
                 SectionCard(onClick = { nav.navigate(Routes.VACCINES) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
