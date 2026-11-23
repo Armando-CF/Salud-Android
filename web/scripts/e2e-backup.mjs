@@ -92,8 +92,9 @@ const errorsLight = await withApp({ seed: 'family' }, async ({ page, context, go
   const cdp = await context.newCDPSession(page)
   await cdp.send('Storage.clearDataForOrigin', { origin: new URL(page.url()).origin, storageTypes: 'indexeddb' })
   await page.reload(); await page.waitForSelector('.app')
-  await page.getByRole('button', { name: 'Empezar' }).click().catch(() => {})
-  await page.waitForSelector('.topbar')
+  // la bienvenida ofrece ir directo a restaurar un respaldo
+  await page.getByRole('button', { name: 'Ya tengo un respaldo: restaurarlo' }).click()
+  await page.waitForSelector('.tabbar, [data-testid="backup-file-input"]', { state: 'attached' })
   const wiped = await dump(page)
   check(wiped.profiles.length === 1 && Object.values(wiped.profiles[0].counts).every((n) => n === 0), 'datos borrados: un perfil vacío')
 

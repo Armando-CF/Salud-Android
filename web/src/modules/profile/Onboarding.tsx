@@ -104,6 +104,14 @@ export function Onboarding(props: { onDone: () => void }) {
               <Feature icon={CloudOff} title="Sin cuenta y sin servidores" text="No hay registro, anuncios ni rastreo. Funciona sin conexión." />
               <Feature icon={Share} title="Tus datos son tuyos" text="Expórtalos o respáldalos cuando quieras." />
             </Card>
+            {/* Quien cambia de teléfono o reinstala puede ir directo a recuperar su respaldo. */}
+            <button
+              type="button"
+              className="btn outline full"
+              onClick={() => { window.location.hash = '#/exportar'; void finish() }}
+            >
+              Ya tengo un respaldo: restaurarlo
+            </button>
           </>
         )}
 

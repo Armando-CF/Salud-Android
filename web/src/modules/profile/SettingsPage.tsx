@@ -93,7 +93,6 @@ export function SettingsPage() {
           text="Tus datos viven solo en este dispositivo. Exporta un respaldo de vez en cuando y guárdalo en Archivos, iCloud o tu correo; con él puedes recuperar todo en este u otro teléfono."
         />
         <div className="stack tight pf-backup"><BackupButtons /></div>
-        <Hint>{lastBackup ? `Último respaldo: ${Fmt.relativeDay(millisToEpochDay(lastBackup)).toLowerCase()}, ${Fmt.time(lastBackup)}.` : 'Aún no has hecho ningún respaldo.'}</Hint>
         <NavRow icon={FileDown} title="Exportar y respaldo" subtitle="Más opciones para exportar tus datos" onClick={() => nav('/exportar')} />
       </Card>
 

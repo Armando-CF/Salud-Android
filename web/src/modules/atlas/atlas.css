@@ -53,8 +53,8 @@ html[data-theme='dark'] .atlas-organ { fill: color-mix(in srgb, var(--oc) 82%, #
 .atlas-zoom button:active:not(:disabled) { background: var(--surface-2); }
 
 /* Selector Mujer / Hombre sobre el lienzo (arriba a la izquierda: no choca con los botones de zoom) */
-.atlas-sex { position: absolute; top: 4px; left: calc(var(--safe-left) + 12px); width: 164px; background: var(--bg); border-radius: 23px; }
-.atlas-sex .segmented button { min-height: 44px; font-size: 14.5px; }
+.atlas-sex { position: absolute; top: 4px; left: calc(var(--safe-left) + 10px); width: 140px; background: var(--bg); border-radius: 23px; }
+.atlas-sex .segmented button { min-height: 44px; font-size: 14px; padding: 0 6px; }
 
 /* Panel inferior */
 .atlas-panel {
