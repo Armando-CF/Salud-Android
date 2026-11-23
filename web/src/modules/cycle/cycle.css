@@ -1,0 +1,81 @@
+/* Módulo de ciclo menstrual (prefijo cy-). */
+:root { --cy-on-period: #ffffff; --cy-soft-text: var(--period); }
+html[data-theme='dark'] { --cy-on-period: #3a0a18; --cy-soft-text: var(--text); }
+
+/* Anillo del ciclo */
+.cy-ring { position: relative; flex: 0 0 auto; }
+.cy-ring svg { display: block; }
+.cy-ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; pointer-events: none; }
+.cy-ring-num { font-size: 46px; font-weight: 800; line-height: 1; letter-spacing: -0.02em; }
+.cy-ring-lbl { font-size: 14px; font-weight: 600; color: var(--muted); }
+
+.cy-header { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; }
+.cy-phase { font-size: 14px; font-weight: 700; margin-top: 8px; }
+.cy-headline { font-size: 23px; font-weight: 700; line-height: 1.2; }
+.cy-header .stats { width: 100%; margin-top: 12px; text-align: left; }
+.cy-header .stat .v { font-size: 17px; }
+
+.cy-btn-period { background: var(--period) !important; color: var(--cy-on-period) !important; }
+
+.cy-first { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+.cy-first .ic { width: 72px; height: 72px; border-radius: 50%; background: var(--period-soft); color: var(--period); display: flex; align-items: center; justify-content: center; }
+.cy-first h3 { font-size: 20px; font-weight: 700; }
+
+.cy-lines { display: flex; flex-direction: column; gap: 4px; }
+.cy-lines div { display: flex; gap: 8px; }
+.cy-lines b { color: var(--period); }
+
+/* Calendario */
+.cy-cal-head { display: flex; align-items: center; gap: 4px; }
+.cy-cal-head .mid { flex: 1 1 0; text-align: center; min-width: 0; }
+.cy-cal-head .month { font-size: 17px; font-weight: 700; }
+.cy-cal-head .goto { border: 0; background: transparent; color: var(--primary); font-size: 13.5px; font-weight: 700; padding: 6px 10px; min-height: 30px; cursor: pointer; border-radius: 8px; }
+.cy-week { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 12.5px; font-weight: 700; color: var(--muted); padding: 4px 0 2px; }
+.cy-grid { display: grid; grid-template-columns: repeat(7, 1fr); touch-action: pan-y; -webkit-user-select: none; user-select: none; }
+.cy-cell { position: relative; height: 48px; min-width: 0; border: 0; background: transparent; padding: 0; margin: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 12px; color: var(--text); font-size: 15px; }
+.cy-cell:active { background: var(--surface-2); }
+.cy-cell.dim { opacity: 0.34; }
+.cy-disc { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid transparent; }
+.cy-disc.bold { font-weight: 800; }
+.cy-disc.flow2 { background: color-mix(in srgb, var(--period) 62%, transparent); color: var(--cy-on-period); }
+.cy-disc.flow3 { background: color-mix(in srgb, var(--period) 82%, transparent); color: var(--cy-on-period); }
+.cy-disc.flow4 { background: var(--period); color: var(--cy-on-period); }
+.cy-disc.soft { background: var(--period-soft); color: var(--cy-soft-text); }
+.cy-disc.predicted { border: 2px dashed var(--period); color: var(--period); }
+.cy-disc.fertile { background: var(--fertile-soft); }
+.cy-disc.ovulation { background: var(--fertile-soft); border-color: var(--ovulation); }
+.cy-disc.today { outline: 2px solid var(--text); outline-offset: 2px; }
+.cy-extra { position: absolute; left: 50%; top: calc(50% + 10px); width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--muted); }
+.cy-extra.on-period { background: var(--cy-on-period); }
+.cy-test { position: absolute; left: calc(50% + 11px); top: calc(50% - 19px); width: 8px; height: 8px; background: var(--tertiary); transform: rotate(45deg); border-radius: 1px; }
+
+.cy-cal-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cy-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.cy-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cy-legend i { display: inline-block; width: 14px; height: 14px; border-radius: 50%; box-sizing: border-box; }
+.cy-legend i.period { background: var(--period); }
+.cy-legend i.predicted { border: 2px dashed var(--period); }
+.cy-legend i.fertile { background: var(--fertile-soft); }
+.cy-legend i.ovulation { background: var(--fertile-soft); border: 2px solid var(--ovulation); }
+.cy-legend i.today { border: 2px solid var(--text); }
+.cy-legend i.notes { width: 5px; height: 5px; margin: 0 4px; background: var(--muted); }
+.cy-legend i.test { width: 8px; height: 8px; margin: 0 3px; border-radius: 1px; background: var(--tertiary); transform: rotate(45deg); }
+
+.note.cy-note-period { background: var(--period-soft); color: var(--text); }
+.note.cy-note-tertiary { background: var(--tertiary-container); color: var(--text); }
+.btn.cy-btn-log { font-size: 15px; padding: 8px 14px; line-height: 1.25; }
+
+/* Editor del día y ajustes */
+.cy-sub { font-size: 13.5px; font-weight: 700; color: var(--muted); }
+.cy-stepper { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
+.cy-stepper .val { min-width: 56px; text-align: center; }
+.cy-stepper .val b { display: block; font-size: 21px; line-height: 1.1; }
+.cy-stepper .val span { font-size: 11.5px; color: var(--muted); }
+.cy-step-btn { width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--secondary-container); color: var(--on-secondary-container); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; }
+.cy-step-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Estadísticas */
+.cy-hist-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; }
+.cy-hist-row.tap { cursor: pointer; border-radius: 10px; border: 0; background: transparent; width: 100%; text-align: left; color: inherit; font: inherit; }
+.cy-hist-row.tap:active { background: var(--surface-2); }
+.cy-hist-len { font-size: 17px; font-weight: 700; }
