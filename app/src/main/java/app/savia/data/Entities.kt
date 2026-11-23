@@ -32,7 +32,26 @@ data class Profile(
     val doctorPhone: String = "",
     val insurance: String = "",
     val notes: String = "",
-)
+    // ── Desde la versión 2 de la base (perfiles múltiples y mascotas) ──
+    /** "person" o "pet". No cambia después de crear el perfil. */
+    val kind: String = "person",
+    /** Solo mascotas: clave de PetSpecies ("perro", "gato", "ave", "conejo", "roedor", "reptil", "otro"). */
+    val species: String = "",
+    /** Solo mascotas: raza. */
+    val breed: String = "",
+    /** Solo mascotas: esterilizado/a (null = no se sabe). */
+    val sterilized: Boolean? = null,
+    /** Solo mascotas: número de microchip o placa. */
+    val microchip: String = "",
+    /** Solo mascotas: color y señas particulares. */
+    val markings: String = "",
+    /** Solo personas: parentesco con quien usa la app ("Yo", "Hija", "Papá"…). Texto libre. */
+    val relation: String = "",
+    /** Índice del color del avatar (0..7). */
+    val avatarColor: Int = 0,
+) {
+    val isPet: Boolean get() = kind == "pet"
+}
 
 /** Un síntoma o malestar registrado. */
 @Entity(tableName = "symptoms", indices = [Index("timestamp")])
@@ -217,4 +236,25 @@ data class SelfExam(
     /** true = sin cambios; false = noté algo. */
     val normal: Boolean = true,
     val notes: String = "",
+)
+
+/** Vacuna, desparasitación u otra aplicación preventiva (para personas y mascotas). */
+@Entity(tableName = "vaccinations", indices = [Index("epochDay")])
+data class Vaccination(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Fecha de aplicación. */
+    val epochDay: Long,
+    /** "vacuna", "desp_interna" (desparasitación interna), "desp_externa" (pulgas/garrapatas) u "otro". */
+    val type: String = "vacuna",
+    val name: String,
+    /** Dosis o esquema: "1.ª dosis", "Refuerzo", "Anual"… */
+    val dose: String = "",
+    /** Próxima aplicación o refuerzo (opcional). */
+    val nextDueEpochDay: Long? = null,
+    /** Lugar, clínica o veterinaria. */
+    val place: String = "",
+    val lot: String = "",
+    val notes: String = "",
+    /** Avisar cuando se acerque [nextDueEpochDay]. */
+    val remind: Boolean = true,
 )

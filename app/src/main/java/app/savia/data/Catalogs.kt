@@ -15,15 +15,18 @@ enum class MeasureType(
     val max: Double,
     /** Contextos sugeridos. */
     val tags: List<String> = emptyList(),
+    /** ¿Aplica también a mascotas? */
+    val forPets: Boolean = false,
 ) {
-    WEIGHT("weight", "Peso", "kg", 1, "Peso", null, 1.0, 400.0),
+    WEIGHT("weight", "Peso", "kg", 1, "Peso", null, 0.01, 400.0, forPets = true),
+    HEIGHT("height", "Estatura", "cm", 1, "Estatura", null, 20.0, 250.0),
     BLOOD_PRESSURE("bp", "Presión arterial", "mmHg", 0, "Sistólica (alta)", "Diastólica (baja)", 40.0, 300.0,
         listOf("En reposo", "Por la mañana", "Por la noche", "Después de ejercicio")),
-    HEART_RATE("hr", "Frecuencia cardiaca", "lpm", 0, "Pulsaciones", null, 20.0, 250.0,
-        listOf("En reposo", "Después de ejercicio")),
+    HEART_RATE("hr", "Frecuencia cardiaca", "lpm", 0, "Pulsaciones", null, 20.0, 400.0,
+        listOf("En reposo", "Después de ejercicio"), forPets = true),
     GLUCOSE("glucose", "Glucosa", "mg/dL", 0, "Glucosa", null, 20.0, 700.0,
         listOf("En ayunas", "Antes de comer", "2 h después de comer", "Antes de dormir")),
-    TEMPERATURE("temp", "Temperatura", "°C", 1, "Temperatura", null, 30.0, 45.0),
+    TEMPERATURE("temp", "Temperatura", "°C", 1, "Temperatura", null, 30.0, 45.0, forPets = true),
     SPO2("spo2", "Oxigenación", "%", 0, "SpO₂", null, 50.0, 100.0),
     WAIST("waist", "Cintura", "cm", 1, "Cintura", null, 20.0, 300.0),
     HIP("hip", "Cadera", "cm", 1, "Cadera", null, 20.0, 300.0),
@@ -31,6 +34,9 @@ enum class MeasureType(
 
     companion object {
         fun of(key: String): MeasureType? = entries.firstOrNull { it.key == key }
+
+        /** Tipos que aplican al perfil: todos para personas; solo los marcados [forPets] para mascotas. */
+        fun available(isPet: Boolean): List<MeasureType> = if (isPet) entries.filter { it.forPets } else entries.toList()
     }
 }
 
@@ -174,4 +180,19 @@ object SexOptions {
 object SelfExamTypes {
     val all: List<Pair<String, String>> = listOf("mama" to "Mamaria", "testicular" to "Testicular", "piel" to "Piel y lunares")
     fun label(key: String): String = all.firstOrNull { it.first == key }?.second ?: key
+}
+
+/** Tipos de registro del módulo de vacunas (clave → etiqueta). */
+object VaccinationTypes {
+    val all: List<Pair<String, String>> = listOf(
+        "vacuna" to "Vacuna",
+        "desp_interna" to "Desparasitación interna",
+        "desp_externa" to "Pulgas y garrapatas",
+        "otro" to "Otro",
+    )
+
+    /** Para personas solo tienen sentido "vacuna" y "otro". */
+    fun forProfile(isPet: Boolean): List<Pair<String, String>> = if (isPet) all else all.filter { it.first == "vacuna" || it.first == "otro" }
+
+    fun label(key: String): String = all.firstOrNull { it.first == key }?.second ?: "Otro"
 }

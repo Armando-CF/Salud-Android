@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Bloodtype
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.Height
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.Percent
 import androidx.compose.material.icons.filled.Straighten
@@ -56,6 +57,7 @@ internal fun MeasureType.icon(): ImageVector = when (this) {
     MeasureType.TEMPERATURE -> Icons.Filled.Thermostat
     MeasureType.SPO2 -> Icons.Filled.Air
     MeasureType.WAIST, MeasureType.HIP -> Icons.Filled.Straighten
+    MeasureType.HEIGHT -> Icons.Filled.Height
     MeasureType.BODY_FAT -> Icons.Filled.Percent
 }
 

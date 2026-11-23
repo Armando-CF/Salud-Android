@@ -342,3 +342,30 @@ interface SelfExamDao {
     @Query("DELETE FROM self_exams")
     suspend fun clear()
 }
+
+@Dao
+interface VaccinationDao {
+    @Query("SELECT * FROM vaccinations ORDER BY epochDay DESC, id DESC")
+    fun observeAll(): Flow<List<Vaccination>>
+
+    @Query("SELECT * FROM vaccinations WHERE id = :id")
+    suspend fun get(id: Long): Vaccination?
+
+    @Query("SELECT * FROM vaccinations ORDER BY epochDay")
+    suspend fun getAll(): List<Vaccination>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: Vaccination): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<Vaccination>)
+
+    @Update
+    suspend fun update(item: Vaccination)
+
+    @Delete
+    suspend fun delete(item: Vaccination)
+
+    @Query("DELETE FROM vaccinations")
+    suspend fun clear()
+}

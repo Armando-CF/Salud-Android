@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -100,8 +101,10 @@ fun SaviaScaffold(
         // Las pantallas de primer nivel viven dentro de otro Scaffold que ya aplica la barra inferior.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
-        content = content,
-    )
+    ) { pad ->
+        // Con el teclado abierto el contenido se encoge para que todo siga siendo alcanzable al desplazarse.
+        Box(Modifier.fillMaxSize().imePadding()) { content(pad) }
+    }
 }
 
 /** Tarjeta de sección con título opcional y acción opcional a la derecha del título. */

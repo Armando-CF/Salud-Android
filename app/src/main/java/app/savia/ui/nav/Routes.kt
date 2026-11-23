@@ -23,6 +23,10 @@ object Routes {
     const val PROFILE = "profile"
     const val SETTINGS = "settings"
 
+    /** Lista de perfiles (personas y mascotas): cambiar, crear, eliminar. */
+    const val PROFILES = "profiles"
+    const val VACCINES = "vaccines"
+
     /** Clave en savedStateHandle donde el atlas deja la zona elegida como "id|Nombre". */
     const val RESULT_REGION = "picked_region"
 
@@ -46,6 +50,11 @@ object Routes {
 
     /** Evolución de un parámetro de laboratorio (por nombre) a través de todos los estudios. */
     fun paramTrend(name: String): String = "param_trend?name=${enc(name)}"
+
+    /** Alta de un perfil nuevo. kind = "person" o "pet". */
+    fun profileNew(kind: String): String = "profile_new/$kind"
+
+    fun vaccineEdit(id: Long? = null): String = "vaccine_edit?id=${id ?: -1}"
 
     fun medEdit(id: Long? = null): String = "med_edit?id=${id ?: -1}"
     fun appointmentEdit(id: Long? = null): String = "appointment_edit?id=${id ?: -1}"

@@ -227,7 +227,7 @@ object MeasureStats {
         MeasureType.TEMPERATURE -> temperature(m.value)
         MeasureType.SPO2 -> spo2(m.value)
         MeasureType.WAIST -> if (heightCm != null && heightCm >= 50) waistToHeight(m.value, heightCm) else null
-        MeasureType.HIP, MeasureType.BODY_FAT -> null
+        MeasureType.HIP, MeasureType.BODY_FAT, MeasureType.HEIGHT -> null
     }
 
     // ---------- Meta de peso ----------

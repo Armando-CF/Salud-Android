@@ -27,9 +27,28 @@ class Pref<T>(
     }
 }
 
-/** Ajustes de la app (no son datos de salud; esos viven en la base de datos). */
-class Prefs(context: Context) {
-    private val sp = context.applicationContext.getSharedPreferences("savia_prefs", Context.MODE_PRIVATE)
+/** Ajustes globales (iguales para todos los perfiles). Una sola instancia por proceso. */
+class GlobalPrefs(context: Context) {
+    internal val sp: SharedPreferences = context.applicationContext.getSharedPreferences(Prefs.FILE, Context.MODE_PRIVATE)
+
+    /** Ya se mostró la bienvenida. */
+    val onboardingDone = Pref(sp, "onboarding_done", false, { s, k, d -> s.getBoolean(k, d) }, { e, k, v -> e.putBoolean(k, v) })
+
+    /** "system", "light" o "dark". */
+    val themeMode = Pref(sp, "theme_mode", "system", { s, k, d -> s.getString(k, d) ?: d }, { e, k, v -> e.putString(k, v) })
+
+    /** Pedir huella / PIN del teléfono al abrir. */
+    val appLock = Pref(sp, "app_lock", false, { s, k, d -> s.getBoolean(k, d) }, { e, k, v -> e.putBoolean(k, v) })
+}
+
+/**
+ * Ajustes de la app (no son datos de salud; esos viven en la base de datos).
+ * Hay una instancia POR PERFIL: los ajustes del ciclo, del atlas y de recordatorios son de cada perfil
+ * (archivo [fileName]); tema, bloqueo y bienvenida son globales y se comparten entre todas las instancias.
+ */
+class Prefs(context: Context, fileName: String = FILE, global: GlobalPrefs? = null) {
+    private val sp = context.applicationContext.getSharedPreferences(fileName, Context.MODE_PRIVATE)
+    private val g: GlobalPrefs = global ?: GlobalPrefs(context)
 
     private fun bool(key: String, def: Boolean) =
         Pref(sp, key, def, { s, k, d -> s.getBoolean(k, d) }, { e, k, v -> e.putBoolean(k, v) })
@@ -40,12 +59,17 @@ class Prefs(context: Context) {
     private fun str(key: String, def: String) =
         Pref(sp, key, def, { s, k, d -> s.getString(k, d) ?: d }, { e, k, v -> e.putString(k, v) })
 
+    // ── Globales ──
     /** Ya se mostró la bienvenida. */
-    val onboardingDone = bool("onboarding_done", false)
+    val onboardingDone: Pref<Boolean> get() = g.onboardingDone
 
     /** "system", "light" o "dark". */
-    val themeMode = str("theme_mode", "system")
+    val themeMode: Pref<String> get() = g.themeMode
 
+    /** Pedir huella / PIN del teléfono al abrir. */
+    val appLock: Pref<Boolean> get() = g.appLock
+
+    // ── Por perfil ──
     /** Módulo de ciclo menstrual visible. */
     val cycleEnabled = bool("cycle_enabled", false)
 
@@ -64,35 +88,43 @@ class Prefs(context: Context) {
     /** Avisar unos días antes del periodo estimado. */
     val periodReminder = bool("period_reminder", false)
 
-    /** Pedir huella / PIN del teléfono al abrir. */
-    val appLock = bool("app_lock", false)
-
     /** Modelo del atlas corporal: "F" o "M". */
     val atlasSex = str("atlas_sex", "F")
 
     /** Recordatorio mensual de autoexploración. */
     val selfExamReminder = bool("self_exam_reminder", false)
 
-    val all: List<Pref<*>> = listOf(
-        onboardingDone, themeMode, cycleEnabled, cycleLength, periodLength, lutealLength,
-        showFertility, periodReminder, appLock, atlasSex, selfExamReminder,
+    /** Ajustes propios de este perfil. */
+    val profileScoped: List<Pref<*>> = listOf(
+        cycleEnabled, cycleLength, periodLength, lutealLength, showFertility, periodReminder, atlasSex, selfExamReminder,
     )
+
+    val all: List<Pref<*>> get() = listOf(onboardingDone, themeMode, appLock) + profileScoped
 
     /** Mapa clave → valor para respaldo. */
     fun export(): Map<String, Any?> = all.associate { it.key to it.value }
 
     /** Restaura valores desde un respaldo (ignora claves desconocidas). */
     fun import(values: Map<String, Any?>) {
-        val e = sp.edit()
         for (p in all) {
             val v = values[p.key] ?: continue
+            @Suppress("UNCHECKED_CAST")
             when (p.default) {
-                is Boolean -> (v as? Boolean)?.let { e.putBoolean(p.key, it) }
-                is Int -> (v as? Number)?.let { e.putInt(p.key, it.toInt()) }
-                is String -> e.putString(p.key, v.toString())
+                is Boolean -> (v as? Boolean)?.let { (p as Pref<Boolean>).value = it }
+                is Int -> (v as? Number)?.let { (p as Pref<Int>).value = it.toInt() }
+                is String -> (p as Pref<String>).value = v.toString()
             }
         }
-        e.commit()
-        all.forEach { it.reload() }
+    }
+
+    /** Borra los ajustes propios de este perfil (al eliminar el perfil). */
+    fun clearProfileScoped() {
+        sp.edit().also { e -> profileScoped.forEach { e.remove(it.key) } }.commit()
+        profileScoped.forEach { it.reload() }
+    }
+
+    companion object {
+        /** Archivo del perfil 1 y de los ajustes globales. */
+        const val FILE = "savia_prefs"
     }
 }

@@ -8,9 +8,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.savia.reminders.ReminderScheduler
+import app.savia.ui.components.DismissKeyboardOnTapOutside
 import app.savia.ui.profile.OnboardingScreen
 import app.savia.ui.lock.AppLockGate
 import app.savia.ui.nav.AppNav
@@ -34,11 +36,15 @@ class MainActivity : FragmentActivity() {
                 val style = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
+            val activeProfile by Savia.activeId.collectAsStateWithLifecycle()
             SaviaTheme(themeMode) {
-                if (!onboarded) {
-                    OnboardingScreen(onDone = { Savia.prefs.onboardingDone.value = true })
-                } else {
-                    AppLockGate(this) { AppNav() }
+                DismissKeyboardOnTapOutside {
+                    if (!onboarded) {
+                        OnboardingScreen(onDone = { Savia.prefs.onboardingDone.value = true })
+                    } else {
+                        // Al cambiar de perfil se recrea toda la navegación: cada perfil tiene su propia base de datos.
+                        AppLockGate(this) { key(activeProfile) { AppNav() } }
+                    }
                 }
             }
         }

@@ -45,13 +45,17 @@ import app.savia.ui.meds.AppointmentEditScreen
 import app.savia.ui.meds.AppointmentsScreen
 import app.savia.ui.meds.MedEditScreen
 import app.savia.ui.meds.MedsScreen
+import app.savia.ui.profile.NewProfileScreen
 import app.savia.ui.profile.ProfileScreen
+import app.savia.ui.profile.ProfilesScreen
 import app.savia.ui.profile.SettingsScreen
 import app.savia.ui.studies.ParamTrendScreen
 import app.savia.ui.studies.StudiesScreen
 import app.savia.ui.studies.StudyDetailScreen
 import app.savia.ui.studies.StudyEditScreen
 import app.savia.ui.symptoms.SymptomEditScreen
+import app.savia.ui.vaccines.VaccineEditScreen
+import app.savia.ui.vaccines.VaccinesScreen
 import app.savia.ui.symptoms.SymptomsScreen
 import app.savia.ui.wellbeing.SelfExamScreen
 import app.savia.ui.wellbeing.WellbeingScreen
@@ -169,6 +173,15 @@ fun AppNav() {
                 composable(Routes.APPOINTMENTS) { AppointmentsScreen(nav) }
                 composable("appointment_edit?id={id}", arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })) { e ->
                     AppointmentEditScreen(nav, id = e.arguments?.getLong("id")?.takeIf { it > 0 })
+                }
+
+                composable(Routes.PROFILES) { ProfilesScreen(nav) }
+                composable("profile_new/{kind}", arguments = listOf(navArgument("kind") { type = NavType.StringType })) { e ->
+                    NewProfileScreen(nav, kind = e.arguments?.getString("kind") ?: "person")
+                }
+                composable(Routes.VACCINES) { VaccinesScreen(nav) }
+                composable("vaccine_edit?id={id}", arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })) { e ->
+                    VaccineEditScreen(nav, id = e.arguments?.getLong("id")?.takeIf { it > 0 })
                 }
 
                 composable(Routes.EXPORT) { ExportScreen(nav) }

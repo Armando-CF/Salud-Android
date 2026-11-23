@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -126,8 +127,9 @@ private fun PickerField(
     trailing: @Composable () -> Unit,
 ) {
     val src = remember { MutableInteractionSource() }
+    val focus = LocalFocusManager.current
     LaunchedEffect(src) {
-        src.interactions.collect { if (it is PressInteraction.Release) onClick() }
+        src.interactions.collect { if (it is PressInteraction.Release) { focus.clearFocus(); onClick() } }
     }
     OutlinedTextField(
         value = text,
