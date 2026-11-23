@@ -1,5 +1,6 @@
 package app.savia
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
@@ -23,6 +24,7 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         Savia.io { ReminderScheduler.rescheduleAll(applicationContext) }
+        if (savedInstanceState == null) openProfileFrom(intent)
         setContent {
             val themeMode by Savia.prefs.themeMode.flow.collectAsStateWithLifecycle()
             val onboarded by Savia.prefs.onboardingDone.flow.collectAsStateWithLifecycle()
@@ -48,5 +50,16 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openProfileFrom(intent)
+    }
+
+    /** Si la app se abre desde un aviso de otro perfil (p. ej. la vacuna de una mascota), muestra ese perfil. */
+    private fun openProfileFrom(intent: Intent?) {
+        val id = intent?.getIntExtra(ReminderScheduler.EXTRA_PROFILE_ID, -1) ?: -1
+        if (id > 0 && id in Savia.profileIds && id != Savia.activeId.value) Savia.switchTo(id)
     }
 }
