@@ -1,22 +1,11 @@
-import { Page } from '../../ui'
+// Módulo de Estudios y chequeos médicos (portado de app/src/main/java/app/savia/ui/studies).
+export { StudiesPage } from './StudiesPage'
+export { StudyDetailPage } from './StudyDetailPage'
+export { StudyEditPage } from './StudyEditPage'
+export { ParamTrendPage } from './ParamTrendPage'
 
-/** Lista de estudios. */
-export function StudiesPage() {
-  return <Page title="Estudios"><p className="muted">Pendiente</p></Page>
-}
-
-/** Ruta /estudios/:id */
-export function StudyDetailPage() {
-  return <Page title="Estudio"><p className="muted">Pendiente</p></Page>
-}
-
-/** Rutas /estudios/nuevo y /estudios/:id/editar */
-export function StudyEditPage() {
-  return <Page title="Estudio"><p className="muted">Pendiente</p></Page>
-}
-
-/** Ruta /parametro/:name */
-export function ParamTrendPage() {
-  return <Page title="Parámetro"><p className="muted">Pendiente</p></Page>
-}
-
+// Lógica útil para otras pantallas (p. ej. Inicio).
+export {
+  upcomingFollowUps, paramSummaries, paramPath, resultFlag, outOfRange, valueText, flag, type ParamSummary, type RangeFlag,
+} from './catalog'
+export { StudyProfile, useStudyProfile } from './profile'
