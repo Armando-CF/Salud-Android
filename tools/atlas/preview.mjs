@@ -19,7 +19,7 @@ for (const v of views) {
   html += `<div><div style="color:${pal.text};font-size:12px">${v.id}</div><svg width="${bw * scale}" height="${bh * scale}" viewBox="${bx} ${by} ${bw} ${bh}">`;
   for (const s of v.shapes) {
     let fill = 'none', stroke = pal.stroke, sw = 1, extra = '';
-    if (s.kind === 'region') fill = pal.skin;
+    if (s.kind === 'region') { fill = pal.skin; if (process.env.COLORS) { let hsh = 0; for (const ch of s.id) hsh = (hsh * 37 + ch.charCodeAt(0)) % 360; fill = `hsl(${hsh},55%,${dark ? 35 : 78}%)`; } }
     else if (s.kind === 'skin') { fill = pal.skin; stroke = s.outline ? pal.stroke : 'none'; extra = s.alpha ? ` opacity="${s.alpha}"` : ''; }
     else if (s.kind === 'bone') { fill = pal.bone; stroke = pal.boneStroke; sw = 0.8; }
     else if (s.kind === 'organ') { fill = s.color; stroke = 'rgba(0,0,0,0.35)'; sw = 0.8; if (s.alpha) extra += ` fill-opacity="${s.alpha}"`; if (s.dashed) extra += ' stroke-dasharray="3 2"'; }

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.Button
@@ -73,6 +74,7 @@ import androidx.navigation.NavController
 import app.savia.Savia
 import app.savia.data.SymptomEntry
 import app.savia.ui.components.CenterBox
+import app.savia.ui.components.EmptyState
 import app.savia.ui.components.InfoNote
 import app.savia.ui.components.SaviaScaffold
 import app.savia.ui.nav.Routes
@@ -98,13 +100,20 @@ fun BodyAtlasScreen(
     val context = LocalContext.current
     val atlas by produceState<Atlas?>(null) { value = withContext(Dispatchers.IO) { AtlasRepo.load(context) } }
     val sex by Savia.prefs.atlasSex.flow.collectAsStateWithLifecycle()
-    var group by rememberSaveable { mutableStateOf(initialGroup) }
+    val profile by Savia.active.collectAsStateWithLifecycle()
+    val isPet = profile.isPet
+    val species = if (isPet) profile.species else null
+    var requestedGroup by rememberSaveable { mutableStateOf(initialGroup) }
     var selectedId by rememberSaveable { mutableStateOf(initialSelection) }
     val symptoms by Savia.db.symptoms().observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
 
     SaviaScaffold(
         title = if (pickMode) "Elige la zona" else "Cuerpo",
-        subtitle = if (pickMode) "Toca dónde sientes la molestia" else "Toca una zona para saber cómo se llama",
+        subtitle = when {
+            !pickMode -> "Toca una zona para saber cómo se llama"
+            isPet -> "Toca la zona donde notas la molestia"
+            else -> "Toca dónde sientes la molestia"
+        },
         onBack = onBack,
     ) { pad ->
         val a = atlas
@@ -112,15 +121,32 @@ fun BodyAtlasScreen(
             CenterBox(Modifier.padding(pad)) { Text("Cargando…") }
             return@SaviaScaffold
         }
-        val view = a.view(group, sex) ?: a.views.first()
+        // Personas: figura humana. Mascotas: solo las figuras de su especie (perro o gato).
+        val groups = a.groupsFor(isPet, profile.species)
+        val group = if (groups.any { it.first == requestedGroup }) requestedGroup else groups.firstOrNull()?.first
+        val view = group?.let { a.view(it, sex, species) }
+        if (group == null || view == null) {
+            Column(Modifier.padding(pad).fillMaxSize(), verticalArrangement = Arrangement.Center) {
+                EmptyState(
+                    icon = Icons.Filled.Pets,
+                    title = "Aún no tenemos una figura para esta especie",
+                    message = "Por ahora hay figuras de perro y de gato. Puedes registrar síntomas sin indicar la zona.",
+                    actionLabel = if (pickMode) "Regresar" else "Registrar un síntoma",
+                    onAction = { if (pickMode) nav.back() else nav.navigate(Routes.symptomEdit()) },
+                )
+            }
+            return@SaviaScaffold
+        }
         val selected = view.shapes.firstOrNull { it.id == selectedId }
         Column(Modifier.padding(pad).fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                for ((g, label) in a.groups) {
-                    FilterChip(selected = g == group, onClick = { group = g; selectedId = null }, label = { Text(label) })
+            if (groups.size > 1) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for ((g, label) in groups) {
+                        FilterChip(selected = g == group, onClick = { requestedGroup = g; selectedId = null }, label = { Text(label) })
+                    }
                 }
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -131,7 +157,7 @@ fun BodyAtlasScreen(
                     onSelect = { selectedId = it },
                     modifier = Modifier.fillMaxSize(),
                 )
-                if (a.hasSexVariants(group)) {
+                if (a.hasSexVariants(group, species)) {
                     SingleChoiceSegmentedButtonRow(Modifier.align(Alignment.TopEnd).padding(end = 12.dp, top = 4.dp).width(132.dp)) {
                         listOf("F" to "Mujer", "M" to "Hombre").forEachIndexed { i, (k, label) ->
                             SegmentedButton(
@@ -151,8 +177,10 @@ fun BodyAtlasScreen(
                 selected = selected,
                 symptoms = symptoms,
                 pickMode = pickMode,
+                isPet = isPet,
+                groups = groups,
                 onClear = { selectedId = null },
-                onOpenGroup = { group = it; selectedId = null },
+                onOpenGroup = { requestedGroup = it; selectedId = null },
                 onLog = { id, name -> nav.navigate(Routes.symptomEdit(regionId = id, regionLabel = name)) },
                 onPick = { id, name ->
                     nav.previousBackStackEntry?.savedStateHandle?.set(Routes.RESULT_REGION, "$id|$name")
@@ -305,6 +333,8 @@ private fun InfoPanel(
     selected: AtlasShape?,
     symptoms: List<SymptomEntry>,
     pickMode: Boolean,
+    isPet: Boolean,
+    groups: List<Pair<String, String>>,
     onClear: () -> Unit,
     onOpenGroup: (String) -> Unit,
     onLog: (String, String) -> Unit,
@@ -323,7 +353,11 @@ private fun InfoPanel(
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
-                        if (pickMode) "Toca la zona donde sientes la molestia" else "Toca cualquier parte para ver su nombre y qué hay ahí",
+                        when {
+                            !pickMode -> "Toca cualquier parte para ver su nombre y qué hay ahí"
+                            isPet -> "Toca la zona donde notas la molestia"
+                            else -> "Toca la zona donde sientes la molestia"
+                        },
                         style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
                     )
                     Text(
@@ -353,7 +387,7 @@ private fun InfoPanel(
                         style = MaterialTheme.typography.bodySmall, color = SaviaTheme.colors.bad, fontWeight = FontWeight.Medium,
                     )
                 }
-                if (info.tip != null) InfoNote("Cuándo consultar: ${info.tip}")
+                if (info.tip != null) InfoNote((if (isPet) "Cuándo ir al veterinario: " else "Cuándo consultar: ") + info.tip)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (pickMode) {
                         Button(onClick = { onPick(id, info.name) }) {
@@ -369,14 +403,14 @@ private fun InfoPanel(
                         }
                     }
                     val link = info.link
-                    if (link != null && link != group) {
+                    if (link != null && link != group && groups.any { it.first == link }) {
                         OutlinedButton(onClick = { onOpenGroup(link) }) {
-                            Text("Ver " + (atlas.groups.firstOrNull { it.first == link }?.second ?: "detalle").lowercase())
+                            Text("Ver " + (atlas.groupLabel(link) ?: "detalle").lowercase())
                         }
                     }
                 }
                 Text(
-                    "Información educativa; no sustituye una valoración médica.",
+                    if (isPet) "Información educativa; no sustituye una revisión veterinaria." else "Información educativa; no sustituye una valoración médica.",
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
