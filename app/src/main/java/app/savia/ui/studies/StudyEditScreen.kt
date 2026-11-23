@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -74,6 +73,7 @@ import app.savia.ui.components.Pill
 import app.savia.ui.components.SaviaScaffold
 import app.savia.ui.components.SaviaTextField
 import app.savia.ui.components.SectionCard
+import app.savia.ui.nav.Routes
 import app.savia.ui.nav.back
 import app.savia.util.Fmt
 import app.savia.util.toDoubleLenient
@@ -168,7 +168,9 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
     var focusedKey by remember { mutableStateOf<Long?>(null) }
 
     val profile by remember { Savia.db.profile().observe() }.collectAsStateWithLifecycle(initialValue = null)
-    val sex = profile?.sex ?: "X"
+    // Tipo de perfil (persona adulta, menor o mascota); el sexo se toma de la ficha en cuanto carga.
+    val activeSp = rememberStudyProfile()
+    val sp = remember(activeSp, profile?.sex) { profile?.sex?.let { activeSp.copy(sex = it) } ?: activeSp }
     val pastResults by remember { dao.observeAllResults() }.collectAsStateWithLifecycle(initialValue = emptyList())
     val pastNames = remember(pastResults) { pastResults.map { it.name.trim() }.filter { it.isNotEmpty() }.distinctBy { normalizeName(it) } }
 
@@ -196,14 +198,7 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
     }
 
     /** Unidad y rango sugeridos: primero lo último que capturaste con ese nombre, luego el catálogo. */
-    fun defaultsFor(name: String): Triple<String, Double?, Double?>? {
-        val n = normalizeName(name)
-        val past = pastResults.lastOrNull { it.value != null && normalizeName(it.name) == n }
-        if (past != null) return Triple(past.unit, past.refMin, past.refMax)
-        val p = StudyCatalog.find(name) ?: return null
-        val (lo, hi) = p.rangeFor(sex)
-        return Triple(p.unit, lo, hi)
-    }
+    fun defaultsFor(name: String): Triple<String, Double?, Double?>? = sp.defaultsFor(name, pastResults)
 
     fun rowFor(name: String): ResultRowState {
         val d = defaultsFor(name)
@@ -211,7 +206,7 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
     }
 
     fun addGroup(groupName: String) {
-        val group = StudyCatalog.groups.firstOrNull { it.name == groupName } ?: return
+        val group = sp.groups.firstOrNull { it.name == groupName } ?: return
         val existing = rows.map { normalizeName(it.name) }.toSet()
         rows.removeAll { it.isBlank }
         for (p in group.params) if (normalizeName(p) !in existing) rows.add(rowFor(p))
@@ -295,7 +290,8 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
     ) { pad ->
         if (!loaded) return@SaviaScaffold
         Column(
-            Modifier.padding(pad).fillMaxSize().imePadding().verticalScroll(rememberScrollState())
+            // SaviaScaffold ya ajusta el contenido a la altura del teclado.
+            Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -304,21 +300,24 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Tipo", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     ChoiceChips(
-                        options = StudyCategories.all.map { it.first to StudyCategories.short(it.first) },
+                        options = sp.categories(current = category),
                         selected = category,
                         onSelect = { if (it != null) { category = it; dirty = true } },
                     )
+                    if (category == StudyProfile.VACCINE) {
+                        VaccinesMovedNote(onOpen = { nav.navigate(Routes.VACCINES) })
+                    }
                     SaviaTextField(
                         value = title,
                         onValueChange = { title = it; titleError = false; dirty = true },
                         label = "Nombre del estudio",
-                        placeholder = "Ej. Química sanguínea",
+                        placeholder = if (sp.isPet) "Ej. Consulta veterinaria" else "Ej. Química sanguínea",
                         isError = titleError,
                         supportingText = if (titleError) "Este dato es necesario" else null,
                     )
                     val tq = normalizeName(title)
-                    val suggestions = remember(category, tq) {
-                        StudyCatalog.titlesFor(category)
+                    val suggestions = remember(category, tq, sp) {
+                        sp.titlesFor(category)
                             .filter { normalizeName(it) != tq && (tq.isEmpty() || normalizeName(it).contains(tq)) }
                             .take(6)
                     }
@@ -339,8 +338,8 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
                         }
                     }
                     DateField("Fecha del estudio", day, { day = it; dirty = true })
-                    SaviaTextField(place, { place = it; dirty = true }, "Laboratorio, clínica u hospital", capitalization = KeyboardCapitalization.Words)
-                    SaviaTextField(doctor, { doctor = it; dirty = true }, "Médico que lo indicó o atendió", capitalization = KeyboardCapitalization.Words)
+                    SaviaTextField(place, { place = it; dirty = true }, sp.placeLabel, capitalization = KeyboardCapitalization.Words)
+                    SaviaTextField(doctor, { doctor = it; dirty = true }, sp.doctorLabel, capitalization = KeyboardCapitalization.Words)
                 }
             }
 
@@ -377,6 +376,7 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
                     rows.forEachIndexed { index, row ->
                         ResultRowEditor(
                             row = row,
+                            isLast = index == rows.lastIndex,
                             showSuggestions = focusedKey == row.key,
                             pastNames = pastNames,
                             onFocus = { focusedKey = row.key },
@@ -411,7 +411,7 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
                             Text("Parámetros comunes")
                         }
                     }
-                    InfoNote("Los rangos que se rellenan solos son orientativos para adultos. Cámbialos por los que vengan en el reporte de tu laboratorio.")
+                    InfoNote(sp.rangesNote)
                 }
             }
 
@@ -478,12 +478,13 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text(
-                        "Elige un grupo para agregar sus parámetros con unidad y rango orientativo. Después solo capturas los valores.",
+                        if (sp.isPet) "Elige un grupo para agregar sus parámetros con su unidad. Después capturas los valores y los rangos que vengan en el reporte."
+                        else "Elige un grupo para agregar sus parámetros con unidad y rango orientativo. Después solo capturas los valores.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(8.dp))
-                    for (g in StudyCatalog.groups) {
+                    for (g in sp.groups) {
                         Column(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
                                 .clickable {
@@ -507,6 +508,8 @@ fun StudyEditScreen(nav: NavController, id: Long?) {
 @Composable
 private fun ResultRowEditor(
     row: ResultRowState,
+    /** Última fila: su último campo cierra el teclado en vez de saltar a un campo que no existe. */
+    isLast: Boolean,
     showSuggestions: Boolean,
     pastNames: List<String>,
     onFocus: () -> Unit,
@@ -547,12 +550,16 @@ private fun ResultRowEditor(
                     }
                 }
                 if (row.isText) {
-                    SaviaTextField(
-                        value = row.text,
-                        onValueChange = { onChange(row.copy(text = it)) },
-                        label = "Resultado",
-                        placeholder = "Ej. Negativo, sin alteraciones",
-                    )
+                    if (isLast) {
+                        LastField(row.text, { onChange(row.copy(text = it)) }, "Resultado", placeholder = "Ej. Negativo, sin alteraciones")
+                    } else {
+                        SaviaTextField(
+                            value = row.text,
+                            onValueChange = { onChange(row.copy(text = it)) },
+                            label = "Resultado",
+                            placeholder = "Ej. Negativo, sin alteraciones",
+                        )
+                    }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         NumberField(row.value, { onChange(row.copy(value = it)) }, "Valor", Modifier.weight(1f))
@@ -566,7 +573,11 @@ private fun ResultRowEditor(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         NumberField(row.refMin, { onChange(row.copy(refMin = it)) }, "Ref. mínima", Modifier.weight(1f))
-                        NumberField(row.refMax, { onChange(row.copy(refMax = it)) }, "Ref. máxima", Modifier.weight(1f))
+                        if (isLast) {
+                            LastField(row.refMax, { onChange(row.copy(refMax = it)) }, "Ref. máxima", Modifier.weight(1f), number = true)
+                        } else {
+                            NumberField(row.refMax, { onChange(row.copy(refMax = it)) }, "Ref. máxima", Modifier.weight(1f))
+                        }
                     }
                 }
             }

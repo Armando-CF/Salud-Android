@@ -52,6 +52,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import app.savia.Savia
 import app.savia.data.Study
 import app.savia.data.StudyCategories
@@ -136,11 +140,14 @@ private fun StudyList(
     category: String?,
     onCategory: (String?) -> Unit,
 ) {
+    val sp = rememberStudyProfile()
+    val focus = LocalFocusManager.current
     if (studies.isEmpty()) {
         EmptyState(
             icon = Icons.Filled.Biotech,
             title = "Aún no hay estudios",
-            message = "Guarda aquí tus análisis, radiografías, chequeos y vacunas con sus resultados para ver cómo evolucionan con el tiempo.",
+            message = if (sp.isPet) "Guarda aquí sus análisis, radiografías y consultas veterinarias con sus resultados para ver cómo evolucionan con el tiempo."
+            else "Guarda aquí tus análisis, radiografías y chequeos con sus resultados para ver cómo evolucionan con el tiempo.",
             actionLabel = "Agregar estudio",
             onAction = { nav.navigate(Routes.studyEdit()) },
         )
@@ -185,6 +192,9 @@ private fun StudyList(
                         }
                     },
                     shape = RoundedCornerShape(50),
+                    // La tecla "Buscar" cierra el teclado para dejar ver los resultados.
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
                 )
             }
         }
@@ -196,11 +206,14 @@ private fun StudyList(
                         FilterChip(
                             selected = activeCategory == c,
                             onClick = { onCategory(if (activeCategory == c) null else c) },
-                            label = { Text(StudyCategories.short(c)) },
+                            label = { Text(sp.categoryShort(c)) },
                         )
                     }
                 }
             }
+        }
+        if (activeCategory == StudyProfile.VACCINE) {
+            item(key = "vaccines_moved") { VaccinesMovedNote(onOpen = { nav.navigate(Routes.VACCINES) }) }
         }
         if (followUps.isNotEmpty() && q.isEmpty() && activeCategory == null) {
             item(key = "followups") { FollowUpsCard(nav, followUps, today) }
@@ -225,7 +238,7 @@ private fun StudyList(
                 )
             }
             items(items, key = { it.id }) { s ->
-                StudyCard(s, byStudy[s.id].orEmpty()) { nav.navigate(Routes.study(s.id)) }
+                StudyCard(s, byStudy[s.id].orEmpty(), sp.categoryShort(s.category)) { nav.navigate(Routes.study(s.id)) }
             }
         }
     }
@@ -259,7 +272,7 @@ private fun FollowUpsCard(nav: NavController, followUps: List<Study>, today: Lon
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StudyCard(study: Study, results: List<StudyResult>, onClick: () -> Unit) {
+private fun StudyCard(study: Study, results: List<StudyResult>, categoryLabel: String, onClick: () -> Unit) {
     val out = results.count { it.outOfRange }
     SectionCard(onClick = onClick, contentPadding = 14.dp) {
         Row(verticalAlignment = Alignment.Top) {
@@ -268,7 +281,7 @@ private fun StudyCard(study: Study, results: List<StudyResult>, onClick: () -> U
             Column(Modifier.weight(1f)) {
                 Text(study.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(
-                    "${Fmt.date(study.epochDay)} · ${StudyCategories.short(study.category)}",
+                    "${Fmt.date(study.epochDay)} · $categoryLabel",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
