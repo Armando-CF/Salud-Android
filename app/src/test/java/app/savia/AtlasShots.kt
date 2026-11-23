@@ -13,7 +13,7 @@ class AtlasShots : ScreenshotBase() {
     @Test
     fun parsesAndHitTests() {
         val atlas = AtlasRepo.load(ApplicationProvider.getApplicationContext())
-        assertEquals(11, atlas.views.size)
+        assertEquals(15, atlas.views.size)
         for (v in atlas.views) for (s in v.shapes) if (s.id != null) assertNotNull("sin info: ${s.id}", atlas.info[s.id])
         val front = atlas.view("front", "F")!!
         assertEquals("abd_mesogastrio", front.hit(200f, 340f, 4f)?.id)

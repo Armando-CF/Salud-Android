@@ -92,6 +92,8 @@ class AtlasView(
     val group: String,
     /** "F", "M" o null si es igual para todos. */
     val sex: String?,
+    /** Especie ("perro", "gato") en las vistas de mascota; null en las de personas. */
+    val species: String?,
     val title: String,
     val box: Rect,
     val shapes: List<AtlasShape>,
@@ -129,20 +131,37 @@ class AtlasInfo(
     val link: String?,
 )
 
-class Atlas(val views: List<AtlasView>, val info: Map<String, AtlasInfo>, val note: String) {
-    /** Grupos en el orden en que se muestran. */
+class Atlas(val views: List<AtlasView>, val info: Map<String, AtlasInfo>, val note: String, val petNote: String = "") {
+    /** Grupos de la figura humana, en el orden en que se muestran. */
     val groups: List<Pair<String, String>> = listOf(
         "front" to "Frente", "back" to "Espalda", "abdomen" to "Abdomen", "organs" to "Órganos",
         "skeleton" to "Esqueleto", "hand" to "Mano", "foot" to "Pie",
     )
 
-    fun view(group: String, sex: String): AtlasView? =
-        views.firstOrNull { it.group == group && it.sex == sex } ?: views.firstOrNull { it.group == group }
+    /** Grupos de las figuras de mascota (vista lateral). */
+    val petGroups: List<Pair<String, String>> = listOf("pet_side" to "Cuerpo", "pet_organs" to "Órganos")
 
-    fun hasSexVariants(group: String): Boolean = views.count { it.group == group } > 1
+    /**
+     * Grupos que se muestran a un perfil: los humanos para personas; para mascotas, solo los que
+     * tienen figura de su especie (lista vacía si aún no hay figura para esa especie).
+     */
+    fun groupsFor(isPet: Boolean, species: String): List<Pair<String, String>> =
+        if (!isPet) groups else petGroups.filter { (g, _) -> views.any { it.group == g && it.species == species } }
 
-    /** Nota de orientación izquierda/derecha para cada grupo. */
+    fun groupLabel(group: String): String? = (groups + petGroups).firstOrNull { it.first == group }?.second
+
+    /** Vista de un grupo. Para personas [species] es null; para mascotas, su especie. */
+    fun view(group: String, sex: String, species: String? = null): AtlasView? {
+        val candidates = views.filter { it.group == group && it.species == species }
+        return candidates.firstOrNull { it.sex == sex } ?: candidates.firstOrNull()
+    }
+
+    fun hasSexVariants(group: String, species: String? = null): Boolean =
+        views.count { it.group == group && it.species == species } > 1
+
+    /** Nota de orientación para cada grupo. */
     fun orientationNote(group: String): String = when (group) {
+        "pet_side", "pet_organs" -> "Vista de lado: las zonas valen para ambos lados del cuerpo."
         "back" -> "Vista de espalda: su lado derecho queda a tu derecha."
         "hand" -> "Mano derecha vista por el dorso (los huesos son iguales en la izquierda, en espejo)."
         "foot" -> "Pie derecho visto desde arriba (el izquierdo es igual, en espejo)."
@@ -202,6 +221,7 @@ object AtlasRepo {
                 id = v.getString("id"),
                 group = v.getString("group"),
                 sex = if (v.isNull("sex")) null else v.getString("sex"),
+                species = v.optString("species").takeIf { it.isNotEmpty() },
                 title = v.getString("title"),
                 box = Rect(box.getDouble(0).toFloat(), box.getDouble(1).toFloat(), (box.getDouble(0) + box.getDouble(2)).toFloat(), (box.getDouble(1) + box.getDouble(3)).toFloat()),
                 shapes = shapes,
@@ -221,7 +241,7 @@ object AtlasRepo {
                 link = o.optString("link").takeIf { it.isNotEmpty() },
             )
         }
-        return Atlas(views, info, root.optString("note"))
+        return Atlas(views, info, root.optString("note"), root.optString("petNote"))
     }
 
     /** "M x yL x y...Z M..." → lista de polígonos. */
