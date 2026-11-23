@@ -1,0 +1,59 @@
+/* Módulo de respaldo y exportación (prefijo bk-). */
+
+.bk-who { display: flex; align-items: center; gap: 12px; }
+.bk-who .t { font-weight: 700; }
+.bk-break { word-break: break-all; }
+.bk-list { display: flex; flex-direction: column; }
+.bk-link { border: 0; background: none; padding: 6px 2px; color: var(--primary); font-weight: 700; font-size: 13.5px; text-decoration: underline; cursor: pointer; }
+.bk-undo { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1.5px dashed var(--line); border-radius: 14px; }
+.bk-divider { height: 1px; background: var(--line); margin: 2px 0; }
+
+/* Casillas de secciones: filas altas, fáciles de tocar. */
+.bk-check { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 4px 2px; cursor: pointer; }
+.bk-check input { flex: 0 0 auto; }
+.bk-check .t { font-weight: 600; display: block; }
+.bk-check .s { font-size: 13px; color: var(--muted); display: block; }
+.bk-row-actions { display: flex; align-items: center; gap: 4px; }
+.bk-row-actions .grow { font-size: 13px; color: var(--muted); }
+
+.bk-format { font-size: 13.5px; color: var(--muted); }
+
+/* ── Reporte para imprimir / PDF ───────────────────────────────────────────────────────────── */
+.bk-report { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+.bk-report-head { border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+.bk-report-brand { font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--primary); }
+.bk-report h2 { font-size: 22px; font-weight: 700; margin: 2px 0; }
+.bk-report h3 { font-size: 16px; font-weight: 700; margin: 0 0 6px; color: var(--primary); }
+.bk-report-meta, .bk-report-foot { font-size: 12.5px; color: var(--muted); }
+.bk-report-foot { border-top: 1px solid var(--line); padding-top: 8px; }
+.bk-count { font-weight: 400; color: var(--muted); font-size: 13px; }
+.bk-pairs { margin: 0; display: grid; grid-template-columns: 1fr; gap: 4px; }
+.bk-pairs > div { display: flex; gap: 10px; font-size: 14px; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.bk-pairs dt { flex: 0 0 44%; color: var(--muted); }
+.bk-pairs dd { margin: 0; flex: 1 1 0; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.bk-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; }
+.bk-report table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.bk-report th, .bk-report td { text-align: left; vertical-align: top; padding: 5px 7px; border-bottom: 1px solid var(--line); }
+.bk-report th { font-weight: 700; white-space: nowrap; background: var(--surface-2); }
+.bk-report td { overflow-wrap: break-word; }
+.bk-report td.bk-nw { white-space: nowrap; }
+.bk-report th.bk-wrap, .bk-report td.bk-wrap { min-width: 150px; }
+
+@media print {
+  @page { size: landscape; margin: 10mm; }
+  .bk-report { border: 0; border-radius: 0; padding: 0; background: #fff; color: #000; gap: 10px; }
+  .bk-report h2 { font-size: 16pt; }
+  .bk-report h3 { font-size: 11pt; color: #1b6b58; break-after: avoid; }
+  .bk-report-brand, .bk-report-head { color: #1b6b58; border-color: #1b6b58; }
+  .bk-report-meta, .bk-report-foot, .bk-count, .bk-pairs dt { color: #444; }
+  .bk-pairs { grid-template-columns: 1fr 1fr; column-gap: 18px; }
+  .bk-pairs > div { font-size: 9pt; break-inside: avoid; }
+  .bk-table-wrap { overflow: visible; margin: 0; }
+  .bk-report table { font-size: 7.5pt; table-layout: auto; }
+  .bk-report th { white-space: normal; background: #e9efea !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .bk-report th, .bk-report td { padding: 2.5pt 3.5pt; border-color: #bbb; }
+  .bk-report td.bk-nw { white-space: normal; }
+  .bk-report th.bk-wrap, .bk-report td.bk-wrap { min-width: 0; }
+  .bk-report tr { break-inside: avoid; }
+  .bk-report thead { display: table-header-group; }
+}
