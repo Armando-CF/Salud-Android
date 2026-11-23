@@ -4,11 +4,13 @@ import app.savia.cycle.CycleEngine
 import app.savia.data.CycleCatalog
 import app.savia.data.CycleDay
 import app.savia.data.MeasureType
+import app.savia.data.PetSpecies
 import app.savia.data.SelfExamTypes
 import app.savia.data.SexOptions
 import app.savia.data.StudyCategories
 import app.savia.data.StudyResult
 import app.savia.data.SymptomCatalog
+import app.savia.data.VaccinationTypes
 import app.savia.util.Fmt
 
 /** Convierte [ExportData] en tablas legibles (encabezados en español, catálogos traducidos). */
@@ -51,6 +53,10 @@ object ExportTables {
 
     fun tableCount(options: ExportOptions): Int = options.modules.sumOf { tableCount(it) }
 
+    /** Texto corto del tipo de perfil: "Persona", "Mascota (perro)". */
+    fun kindLabel(kind: String, species: String): String =
+        if (kind == "pet") "Mascota" + (if (species.isNotBlank()) " (${PetSpecies.label(species).lowercase()})" else "") else "Persona"
+
     /** Todas las tablas de los módulos pedidos, en un orden estable. */
     fun build(data: ExportData): List<ExportTable> {
         val out = ArrayList<ExportTable>()
@@ -66,6 +72,7 @@ object ExportTables {
             out += studies(data)
             out += studyResults(data)
         }
+        if (data.has(ExportModule.VACUNAS)) out += vaccinations(data)
         if (data.has(ExportModule.MEDICAMENTOS)) {
             out += medications(data)
             out += intakes(data)
@@ -295,9 +302,25 @@ object ExportTables {
 
     fun appointments(data: ExportData): ExportTable = ExportTable(
         "citas", "Citas", ExportModule.CITAS,
-        listOf(c("Fecha y hora", 18), c("Motivo", 28, true), c("Médico", 20, true), c("Especialidad", 18, true), c("Lugar", 28, true), c("Realizada", 9), c("Notas", 36, true)),
+        listOf(c("Fecha y hora", 18), c("Motivo", 28, true), c(if (data.isPet) "Veterinario" else "Médico", 20, true), c("Especialidad", 18, true), c("Lugar", 28, true), c("Realizada", 9), c("Notas", 36, true)),
         data.appointments.sortedBy { it.timestamp }.map { a ->
             listOf(DateTimeCell(a.timestamp), a.title, a.doctor.orNull(), a.specialty.orNull(), a.place.orNull(), yesNo(a.done), a.notes.orNull())
+        },
+    )
+
+    // ---------------------------------------------------------------- Vacunas
+
+    fun vaccinations(data: ExportData): ExportTable = ExportTable(
+        "vacunas", "Vacunas", ExportModule.VACUNAS,
+        listOf(
+            c("Fecha", 12), c("Tipo", 22), c("Nombre", 28, true), c("Dosis", 16), c("Próxima", 12),
+            c("Lugar", 26, true), c("Lote", 14), c("Recordatorio", 11), c("Notas", 40, true),
+        ),
+        data.vaccinations.sortedWith(compareBy({ it.epochDay }, { it.id })).map { v ->
+            listOf(
+                DateCell(v.epochDay), VaccinationTypes.label(v.type), v.name, v.dose.orNull(), v.nextDueEpochDay?.let { DateCell(it) },
+                v.place.orNull(), v.lot.orNull(), if (v.nextDueEpochDay != null) yesNo(v.remind) else null, v.notes.orNull(),
+            )
         },
     )
 
@@ -316,24 +339,50 @@ object ExportTables {
     /** Datos de la ficha como pares (campo, valor). Omite los vacíos si [skipEmpty]. */
     fun profilePairs(data: ExportData, skipEmpty: Boolean = false): List<Pair<String, Any?>> {
         val p = data.profile ?: return emptyList()
-        val all = listOf<Pair<String, Any?>>(
-            "Nombre" to p.name.orNull(),
-            "Sexo" to SexOptions.label(p.sex).orNull(),
-            "Fecha de nacimiento" to p.birthEpochDay?.let { DateCell(it) },
-            "Edad (años)" to p.birthEpochDay?.let { Fmt.age(it) },
-            "Estatura (cm)" to p.heightCm,
-            "Peso meta (kg)" to p.goalWeightKg,
-            "Tipo de sangre" to p.bloodType.orNull(),
-            "Alergias" to p.allergies.orNull(),
-            "Padecimientos" to p.conditions.orNull(),
-            "Contacto de emergencia" to p.emergencyName.orNull(),
-            "Teléfono de emergencia" to p.emergencyPhone.orNull(),
-            "Médico de cabecera" to p.doctorName.orNull(),
-            "Teléfono del médico" to p.doctorPhone.orNull(),
-            "Seguro médico" to p.insurance.orNull(),
-            "Notas" to p.notes.orNull(),
-        )
-        return if (skipEmpty) all.filter { it.second != null } else all
+        val all: List<Pair<String, Any?>> = if (p.isPet) {
+            listOf(
+                "Nombre" to p.name.orNull(),
+                "Tipo de perfil" to "Mascota",
+                "Especie" to p.species.orNull()?.let { PetSpecies.label(it) },
+                "Raza" to p.breed.orNull(),
+                "Sexo" to PetSpecies.sexes.firstOrNull { it.first == p.sex && p.sex != "X" }?.second,
+                "Fecha de nacimiento" to p.birthEpochDay?.let { DateCell(it) },
+                "Edad (años)" to p.birthEpochDay?.let { Fmt.age(it) },
+                "Esterilizado" to p.sterilized?.let { yesNo(it) },
+                "Microchip o placa" to p.microchip.orNull(),
+                "Color y señas" to p.markings.orNull(),
+                "Peso meta (kg)" to p.goalWeightKg,
+                "Alergias" to p.allergies.orNull(),
+                "Padecimientos" to p.conditions.orNull(),
+                "Veterinario" to p.doctorName.orNull(),
+                "Teléfono del veterinario" to p.doctorPhone.orNull(),
+                "Notas" to p.notes.orNull(),
+            )
+        } else {
+            listOf(
+                "Nombre" to p.name.orNull(),
+                "Tipo de perfil" to "Persona",
+                "Parentesco" to p.relation.orNull(),
+                "Sexo" to SexOptions.label(p.sex).orNull(),
+                "Fecha de nacimiento" to p.birthEpochDay?.let { DateCell(it) },
+                "Edad (años)" to p.birthEpochDay?.let { Fmt.age(it) },
+                "Estatura (cm)" to p.heightCm,
+                "Peso meta (kg)" to p.goalWeightKg,
+                "Tipo de sangre" to p.bloodType.orNull(),
+                "Alergias" to p.allergies.orNull(),
+                "Padecimientos" to p.conditions.orNull(),
+                "Contacto de emergencia" to p.emergencyName.orNull(),
+                "Teléfono de emergencia" to p.emergencyPhone.orNull(),
+                "Médico de cabecera" to p.doctorName.orNull(),
+                "Teléfono del médico" to p.doctorPhone.orNull(),
+                "Seguro médico" to p.insurance.orNull(),
+                "Notas" to p.notes.orNull(),
+            )
+        }
+        if (!skipEmpty) return all
+        // "Tipo de perfil" siempre trae valor: si es lo único (ficha de persona en blanco), no hay nada que mostrar.
+        val filled = all.filter { it.second != null }
+        return if (!p.isPet && filled.all { it.first == "Tipo de perfil" || (it.first == "Sexo" && p.sex == "X") }) emptyList() else filled
     }
 
     fun profile(data: ExportData): ExportTable = ExportTable(

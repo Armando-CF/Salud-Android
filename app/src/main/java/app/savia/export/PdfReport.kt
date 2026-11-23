@@ -5,11 +5,14 @@ import android.graphics.RectF
 import app.savia.data.CycleCatalog
 import app.savia.data.MeasureType
 import app.savia.data.Medication
+import app.savia.data.PetSpecies
 import app.savia.data.Profile
 import app.savia.data.SelfExamTypes
 import app.savia.data.SexOptions
 import app.savia.data.StudyCategories
 import app.savia.data.SymptomCatalog
+import app.savia.data.Vaccination
+import app.savia.data.VaccinationTypes
 import app.savia.util.Fmt
 import app.savia.util.millisToEpochDay
 import app.savia.util.nowMillis
@@ -24,7 +27,8 @@ object PdfReport {
     fun write(data: ExportData, out: OutputStream) = write(data, out, PdfDocumentSink())
 
     internal fun write(data: ExportData, out: OutputStream, sink: PageSink) {
-        val name = data.profile?.name?.trim().orEmpty()
+        val name = data.profileName
+        val pet = data.isPet
         val range = ExportTables.rangeLabel(data.options)
         val pdf = PdfBuilder(
             runningTitle = "Savia — Reporte de salud" + if (name.isNotEmpty()) " · $name" else "",
@@ -40,6 +44,7 @@ object PdfReport {
         if (data.has(ExportModule.SINTOMAS)) symptoms(pdf, data)
         if (data.has(ExportModule.BIENESTAR)) wellbeing(pdf, data)
         if (data.has(ExportModule.ESTUDIOS)) studies(pdf, data)
+        if (data.has(ExportModule.VACUNAS)) vaccinations(pdf, data)
         if (data.has(ExportModule.MEDICAMENTOS)) medications(pdf, data)
         if (data.has(ExportModule.CITAS)) appointments(pdf, data)
         if (data.has(ExportModule.AUTOEXPLORACION)) selfExams(pdf, data)
@@ -47,8 +52,13 @@ object PdfReport {
         pdf.space(8f)
         pdf.ensure(40f)
         pdf.paragraph(
-            "Este reporte reúne información registrada por la persona usuaria en la app Savia. Es un apoyo para dar " +
-                "seguimiento y conversar con personal de salud; no es un diagnóstico ni sustituye una valoración médica.",
+            if (pet) {
+                "Este reporte reúne información registrada por la persona responsable de la mascota en la app Savia. Es un apoyo " +
+                    "para dar seguimiento y conversar con tu veterinaria o veterinario; no es un diagnóstico ni sustituye una valoración profesional."
+            } else {
+                "Este reporte reúne información registrada por la persona usuaria en la app Savia. Es un apoyo para dar " +
+                    "seguimiento y conversar con personal de salud; no es un diagnóstico ni sustituye una valoración médica."
+            },
             muted = true,
         )
         pdf.finish(out)
@@ -68,15 +78,19 @@ object PdfReport {
         pdf.y += 88f
         val pairs = ArrayList<Pair<String, String>>()
         if (name.isNotEmpty()) pairs += "Nombre" to name
+        data.profile?.takeIf { it.isPet }?.let { p ->
+            pairs += "Mascota" to listOf(PetSpecies.label(p.species).takeIf { p.species.isNotBlank() }, p.breed.trim().takeIf { it.isNotEmpty() })
+                .filterNotNull().joinToString(" · ").ifEmpty { "Sí" }
+        }
         pairs += "Periodo del reporte" to range
-        pairs += "Contenido" to ExportModule.entries.filter { data.has(it) }.joinToString(", ") { it.label }
+        pairs += "Contenido" to ExportModule.entries.filter { data.has(it) }.joinToString(", ") { it.labelFor(data.isPet) }
         pdf.keyValues(pairs, labelW = 130f)
     }
 
     // ------------------------------------------------------------------ ficha
 
     private fun profile(pdf: PdfBuilder, data: ExportData) {
-        pdf.section("Mi ficha")
+        pdf.section(if (data.isPet) "Ficha" else "Mi ficha")
         val pairs = ExportTables.profilePairs(data, skipEmpty = true).map { it.first to d(it.second) }
         if (pairs.isEmpty()) pdf.paragraph("La ficha aún no tiene datos.", muted = true) else pdf.keyValues(pairs)
     }
@@ -324,11 +338,43 @@ object PdfReport {
     // ------------------------------------------------------------------ citas
 
     private fun appointments(pdf: PdfBuilder, data: ExportData) {
-        pdf.section("Citas médicas")
+        pdf.section(if (data.isPet) "Citas con el veterinario" else "Citas médicas")
         pdf.table(
-            listOf(col("Fecha y hora", 84f), col("Motivo", 104f), col("Médico", 84f), col("Especialidad", 76f), col("Lugar", 94f), col("Realizada", 44f), col("Notas", 46f)),
+            listOf(col("Fecha y hora", 84f), col("Motivo", 104f), col(if (data.isPet) "Veterinario" else "Médico", 84f), col("Especialidad", 76f), col("Lugar", 94f), col("Realizada", 44f), col("Notas", 46f)),
             data.appointments.sortedByDescending { it.timestamp }.map { a ->
                 listOf(Fmt.dateTime(a.timestamp), a.title, a.doctor, a.specialty, a.place, if (a.done) "Sí" else "No", a.notes.trim())
+            },
+        )
+    }
+
+    // ------------------------------------------------------------------ vacunas
+
+    private fun vaccinations(pdf: PdfBuilder, data: ExportData) {
+        pdf.section(if (data.isPet) "Vacunas y desparasitación" else "Vacunas")
+        val t = data.today
+        val due = data.vaccinations.filter { it.nextDueEpochDay != null }
+            .groupBy { it.type to it.name.trim().lowercase() }
+            .mapNotNull { (_, list) -> list.maxByOrNull { it.epochDay } }
+            .filter { v -> v.nextDueEpochDay!! >= t - 365 }
+            .sortedBy { it.nextDueEpochDay }
+        if (due.isNotEmpty()) {
+            pdf.subheading("Próximas aplicaciones")
+            pdf.keyValues(
+                due.take(12).map { v ->
+                    val d = v.nextDueEpochDay!!
+                    v.name.trim().ifEmpty { VaccinationTypes.label(v.type) } to (Fmt.date(d) + if (d < t) "  (atrasada)" else "")
+                },
+                labelW = 220f,
+            )
+            pdf.space(4f)
+        }
+        pdf.table(
+            listOf(col("Fecha", 60f), col("Tipo", 86f), col("Nombre", 104f), col("Dosis", 54f), col("Próxima", 60f), col("Lugar", 76f), col("Lote", 42f), col("Notas", 70f)),
+            data.vaccinations.sortedByDescending { it.epochDay }.map { v ->
+                listOf(
+                    Fmt.date(v.epochDay), VaccinationTypes.label(v.type), v.name.trim(), v.dose.trim(),
+                    v.nextDueEpochDay?.let { Fmt.date(it) } ?: "", v.place.trim(), v.lot.trim(), v.notes.trim(),
+                )
             },
         )
     }
@@ -347,11 +393,14 @@ object PdfReport {
 }
 
 /**
- * "Ficha médica" de una página con los datos esenciales del perfil: pensada para imprimirse,
- * llevarse en la cartera o mostrarse en una urgencia.
+ * Ficha de una página con los datos esenciales del perfil: pensada para imprimirse, llevarse en la
+ * cartera o mostrarse en una urgencia. Para una persona es la "Ficha médica"; para una mascota es la
+ * "Ficha de <nombre>" (especie, raza, esterilización, microchip y veterinario, sin tipo de sangre,
+ * contacto de emergencia ni seguro).
  *
  * @param medications medicamentos a listar (normalmente los activos).
  * @param weightKg peso más reciente, si se conoce.
+ * @param vaccinations vacunas y desparasitaciones registradas (se muestra la más reciente de cada una).
  */
 fun writeMedicalCardPdf(
     profile: Profile?,
@@ -359,7 +408,20 @@ fun writeMedicalCardPdf(
     weightKg: Double?,
     out: OutputStream,
     generatedAt: Long = nowMillis(),
-) = writeMedicalCardPdf(profile, medications, weightKg, out, generatedAt, PdfDocumentSink())
+    vaccinations: List<Vaccination> = emptyList(),
+) = writeMedicalCardPdf(profile, medications, weightKg, out, generatedAt, PdfDocumentSink(), vaccinations)
+
+/** "3 años", "8 meses" o "2 semanas" a partir de la fecha de nacimiento. */
+internal fun ageText(birthEpochDay: Long, today: Long): String {
+    val birth = java.time.LocalDate.ofEpochDay(birthEpochDay)
+    val now = java.time.LocalDate.ofEpochDay(maxOf(today, birthEpochDay))
+    val years = java.time.temporal.ChronoUnit.YEARS.between(birth, now).toInt()
+    if (years >= 1) return if (years == 1) "1 año" else "$years años"
+    val months = java.time.temporal.ChronoUnit.MONTHS.between(birth, now).toInt()
+    if (months >= 1) return if (months == 1) "1 mes" else "$months meses"
+    val weeks = ((today - birthEpochDay) / 7).toInt().coerceAtLeast(0)
+    return if (weeks == 1) "1 semana" else "$weeks semanas"
+}
 
 internal fun writeMedicalCardPdf(
     profile: Profile?,
@@ -368,9 +430,18 @@ internal fun writeMedicalCardPdf(
     out: OutputStream,
     generatedAt: Long,
     sink: PageSink,
+    vaccinations: List<Vaccination> = emptyList(),
 ) {
     val p = profile ?: Profile()
-    val pdf = PdfBuilder("Savia — Ficha médica", p.name.trim(), "Generada con Savia el ${Fmt.date(generatedAt.millisToEpochDay())}. Verifica que la información siga vigente.", sink)
+    val pet = p.isPet
+    val today = generatedAt.millisToEpochDay()
+    val shownName = p.name.trim().ifEmpty { "Sin nombre" }
+    val pdf = PdfBuilder(
+        if (pet) "Savia — Ficha de $shownName" else "Savia — Ficha médica",
+        if (pet) PetSpecies.label(p.species).takeIf { p.species.isNotBlank() }.orEmpty() else p.name.trim(),
+        "Generada con Savia el ${Fmt.date(today)}. Verifica que la información siga vigente.",
+        sink,
+    )
     pdf.newPage()
     val c = pdf.canvas
     val left = pdf.left
@@ -378,40 +449,53 @@ internal fun writeMedicalCardPdf(
 
     // Encabezado
     pdf.fillRect(left, pdf.y, left + w, pdf.y + 86f, PdfBuilder.C_PRIMARY, 12f)
-    c.drawText("FICHA MÉDICA", left + 20f, pdf.y + 28f, PdfBuilder.paint(11f, 0xFFD6F1E6.toInt(), bold = true))
+    c.drawText(if (pet) "FICHA DE MASCOTA" else "FICHA MÉDICA", left + 20f, pdf.y + 28f, PdfBuilder.paint(11f, 0xFFD6F1E6.toInt(), bold = true))
     val namePaint = PdfBuilder.paint(26f, PdfBuilder.C_WHITE, bold = true)
-    val name = p.name.trim().ifEmpty { "Sin nombre" }
-    while (namePaint.measureText(name) > w - 40f && namePaint.textSize > 12f) namePaint.textSize -= 1f
-    c.drawText(name, left + 20f, pdf.y + 62f, namePaint)
+    while (namePaint.measureText(shownName) > w - 40f && namePaint.textSize > 12f) namePaint.textSize -= 1f
+    c.drawText(shownName, left + 20f, pdf.y + 62f, namePaint)
     pdf.y += 100f
 
     // Datos rápidos en recuadros
-    val bmi = if (weightKg != null && p.heightCm != null && p.heightCm > 0) weightKg / ((p.heightCm / 100) * (p.heightCm / 100)) else null
-    val tiles = listOf(
-        "Tipo de sangre" to p.bloodType.trim().ifEmpty { "—" },
-        "Edad" to (p.birthEpochDay?.let { "${Fmt.age(it)} años" } ?: "—"),
-        "Sexo" to (SexOptions.label(p.sex).takeIf { p.sex != "X" && it.isNotEmpty() } ?: "—"),
-        "Estatura" to (p.heightCm?.let { "${Fmt.num(it, 0)} cm" } ?: "—"),
-        "Peso" to (weightKg?.let { "${Fmt.num(it, 1)} kg" } ?: "—"),
-    )
+    val bmi = if (!pet && weightKg != null && p.heightCm != null && p.heightCm > 0) weightKg / ((p.heightCm / 100) * (p.heightCm / 100)) else null
+    val tiles = if (pet) {
+        listOf(
+            "Especie" to (PetSpecies.label(p.species).takeIf { p.species.isNotBlank() } ?: "—"),
+            "Edad" to (p.birthEpochDay?.let { ageText(it, today) } ?: "—"),
+            "Sexo" to (PetSpecies.sexes.firstOrNull { it.first == p.sex && p.sex != "X" }?.second ?: "—"),
+            "Esterilizado" to (p.sterilized?.let { if (it) "Sí" else "No" } ?: "—"),
+            "Peso" to (weightKg?.let { "${Fmt.num(it, 2)} kg" } ?: "—"),
+        )
+    } else {
+        listOf(
+            "Tipo de sangre" to p.bloodType.trim().ifEmpty { "—" },
+            "Edad" to (p.birthEpochDay?.let { ageText(it, today) } ?: "—"),
+            "Sexo" to (SexOptions.label(p.sex).takeIf { p.sex != "X" && it.isNotEmpty() } ?: "—"),
+            "Estatura" to (p.heightCm?.let { "${Fmt.num(it, 0)} cm" } ?: "—"),
+            "Peso" to (weightKg?.let { "${Fmt.num(it, 1)} kg" } ?: "—"),
+        )
+    }
     val gap = 8f
     val tw = (w - gap * (tiles.size - 1)) / tiles.size
     val pTileLabel = PdfBuilder.paint(8f, PdfBuilder.C_MUTED)
     tiles.forEachIndexed { i, (label, value) ->
         val x = left + i * (tw + gap)
         val first = i == 0
-        pdf.fillRect(x, pdf.y, x + tw, pdf.y + 50f, if (first) 0xFFFDE3E9.toInt() else PdfBuilder.C_ZEBRA, 8f)
+        // En personas el primer recuadro (tipo de sangre) va resaltado en rosa; en mascotas, en verde suave.
+        val fill = if (!first) PdfBuilder.C_ZEBRA else if (pet) 0xFFDDF3EA.toInt() else 0xFFFDE3E9.toInt()
+        val color = if (!first) PdfBuilder.C_TEXT else if (pet) PdfBuilder.C_PRIMARY else PdfBuilder.C_ROSE
+        pdf.fillRect(x, pdf.y, x + tw, pdf.y + 50f, fill, 8f)
         c.drawText(label, x + 9f, pdf.y + 16f, pTileLabel)
-        val pv = PdfBuilder.paint(if (first) 18f else 14f, if (first) PdfBuilder.C_ROSE else PdfBuilder.C_TEXT, bold = true)
+        val pv = PdfBuilder.paint(if (first) 18f else 14f, color, bold = true)
         while (pv.measureText(value) > tw - 16f && pv.textSize > 8f) pv.textSize -= 0.5f
         c.drawText(value, x + 9f, pdf.y + 38f, pv)
     }
     pdf.y += 62f
-    if (bmi != null || p.birthEpochDay != null) {
-        val extra = listOfNotNull(
-            p.birthEpochDay?.let { "Fecha de nacimiento: ${Fmt.date(it)}" },
-            bmi?.let { "IMC: ${Fmt.num(it, 1)}" },
-        ).joinToString("   ·   ")
+    val extra = listOfNotNull(
+        p.birthEpochDay?.let { "Fecha de nacimiento: ${Fmt.date(it)}" },
+        bmi?.let { "IMC: ${Fmt.num(it, 1)}" },
+        p.relation.trim().takeIf { !pet && it.isNotEmpty() && !it.equals("yo", ignoreCase = true) }?.let { "Parentesco: $it" },
+    ).joinToString("   ·   ")
+    if (extra.isNotEmpty()) {
         c.drawText(extra, left, pdf.y + 8f, PdfBuilder.paint(9f, PdfBuilder.C_MUTED))
         pdf.y += 20f
     }
@@ -439,21 +523,47 @@ internal fun writeMedicalCardPdf(
         pdf.y += h + 8f
     }
 
-    val emergency = listOf(p.emergencyName.trim(), p.emergencyPhone.trim()).filter { it.isNotEmpty() }.joinToString("  ·  Tel. ")
-    block("Contacto de emergencia", emergency.ifEmpty { "Sin registrar" }, highlight = 0xFFFDE3E9.toInt(), titleColor = PdfBuilder.C_ROSE, bodySize = 13f)
-    block("Alergias", p.allergies.trim().ifEmpty { "Sin alergias registradas" }, highlight = PdfBuilder.C_WARN_FILL, titleColor = PdfBuilder.C_WARN, bodySize = 12f)
-    block("Padecimientos", p.conditions.trim().ifEmpty { "Sin padecimientos registrados" })
     val meds = medications.sortedBy { it.name.lowercase() }.joinToString("\n") { m ->
         val times = CycleCatalog.split(m.times).joinToString(", ")
         "• " + listOf(m.name.trim(), m.dose.trim()).filter { it.isNotEmpty() }.joinToString(" ") +
             (if (times.isNotEmpty()) " — $times" else " — según sea necesario") +
             (if (m.instructions.isNotBlank()) " (${m.instructions.trim()})" else "")
     }
-    block("Medicamentos actuales", meds.ifEmpty { "Sin medicamentos activos registrados" })
+    // La aplicación más reciente de cada vacuna / desparasitación, con su próxima fecha.
+    val vacs = vaccinations
+        .groupBy { it.type to it.name.trim().lowercase() }
+        .mapNotNull { (_, list) -> list.maxByOrNull { it.epochDay } }
+        .sortedByDescending { it.epochDay }
+        .take(8)
+        .joinToString("\n") { v ->
+            "• " + v.name.trim().ifEmpty { VaccinationTypes.label(v.type) } +
+                (if (v.dose.isNotBlank()) " (${v.dose.trim()})" else "") + " — " + Fmt.date(v.epochDay) +
+                (v.nextDueEpochDay?.let { "  ·  próxima: ${Fmt.date(it)}" } ?: "")
+        }
     val doctor = listOf(p.doctorName.trim(), p.doctorPhone.trim()).filter { it.isNotEmpty() }.joinToString("  ·  Tel. ")
-    if (doctor.isNotEmpty()) block("Médico de cabecera", doctor)
-    if (p.insurance.isNotBlank()) block("Seguro médico", p.insurance.trim())
-    if (p.notes.isNotBlank()) block("Notas", p.notes.trim())
+
+    if (pet) {
+        block("Veterinario", doctor.ifEmpty { "Sin registrar" }, highlight = 0xFFDDF3EA.toInt(), bodySize = 13f)
+        val looks = listOf(p.breed.trim().takeIf { it.isNotEmpty() }?.let { "Raza: $it" }, p.markings.trim().takeIf { it.isNotEmpty() }?.let { "Color y señas: $it" })
+            .filterNotNull().joinToString("\n")
+        if (looks.isNotEmpty()) block("Raza y señas", looks)
+        if (p.microchip.isNotBlank()) block("Microchip o placa", p.microchip.trim())
+        block("Alergias", p.allergies.trim().ifEmpty { "Sin alergias registradas" }, highlight = PdfBuilder.C_WARN_FILL, titleColor = PdfBuilder.C_WARN, bodySize = 12f)
+        block("Padecimientos", p.conditions.trim().ifEmpty { "Sin padecimientos registrados" })
+        block("Medicamentos actuales", meds.ifEmpty { "Sin medicamentos activos registrados" })
+        block("Vacunas y desparasitación", vacs.ifEmpty { "Sin vacunas registradas" })
+        if (p.notes.isNotBlank()) block("Notas", p.notes.trim())
+    } else {
+        val emergency = listOf(p.emergencyName.trim(), p.emergencyPhone.trim()).filter { it.isNotEmpty() }.joinToString("  ·  Tel. ")
+        block("Contacto de emergencia", emergency.ifEmpty { "Sin registrar" }, highlight = 0xFFFDE3E9.toInt(), titleColor = PdfBuilder.C_ROSE, bodySize = 13f)
+        block("Alergias", p.allergies.trim().ifEmpty { "Sin alergias registradas" }, highlight = PdfBuilder.C_WARN_FILL, titleColor = PdfBuilder.C_WARN, bodySize = 12f)
+        block("Padecimientos", p.conditions.trim().ifEmpty { "Sin padecimientos registrados" })
+        block("Medicamentos actuales", meds.ifEmpty { "Sin medicamentos activos registrados" })
+        if (vacs.isNotEmpty()) block("Vacunas", vacs)
+        if (doctor.isNotEmpty()) block("Médico de cabecera", doctor)
+        if (p.insurance.isNotBlank()) block("Seguro médico", p.insurance.trim())
+        if (p.notes.isNotBlank()) block("Notas", p.notes.trim())
+    }
 
     pdf.finish(out)
 }
