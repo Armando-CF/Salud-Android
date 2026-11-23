@@ -1,0 +1,46 @@
+/* Módulo de síntomas (clases con prefijo sym-). */
+
+/* El cuerpo de la pantalla (y el de las hojas) es una columna flexible con altura limitada: sus hijos con
+   `overflow` distinto de visible (selector segmentado, fila de chips desplazable…) se encogerían hasta
+   desaparecer cuando el contenido es más alto que la pantalla. Esta regla debería vivir en styles/app.css. */
+.page-body > *, .sheet-body > * { flex-shrink: 0; }
+
+.sym-search { position: relative; }
+.sym-search .input { padding-left: 44px; padding-right: 46px; border-radius: 24px; }
+.sym-search-ic { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.sym-search .sym-clear { position: absolute; right: 2px; top: 2px; color: var(--muted); }
+/* Safari añade su propia "x" y lupa a los campos de búsqueda: se ocultan para usar las nuestras. */
+.sym-search input[type='search']::-webkit-search-cancel-button,
+.sym-search input[type='search']::-webkit-search-decoration { -webkit-appearance: none; appearance: none; display: none; }
+
+.sym-day { display: flex; align-items: baseline; gap: 8px; padding: 8px 4px 0; font-size: 13.5px; font-weight: 700; color: var(--primary); }
+.sym-day .n { margin-left: auto; color: var(--muted); font-weight: 600; font-size: 12.5px; }
+
+.sym-badge { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 17px; flex: 0 0 auto; }
+
+.sym-item { display: flex; gap: 12px; align-items: flex-start; }
+.sym-item .sym-main { flex: 1 1 0; min-width: 0; }
+.sym-item .sym-name { font-weight: 700; font-size: 16.5px; line-height: 1.25; overflow-wrap: anywhere; }
+.sym-item .sym-meta { font-size: 13px; color: var(--muted); }
+.sym-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+.sym-tags .sym-region { display: inline-flex; align-items: center; gap: 3px; color: var(--primary); }
+.sym-notes { margin-top: 6px; font-size: 15px; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+
+.sym-none { padding: 28px 16px; text-align: center; color: var(--muted); }
+
+.sym-scale-legend { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--muted); }
+
+.sym-strong { display: flex; align-items: center; gap: 10px; }
+.sym-strong .sym-strong-name { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sym-strong b { white-space: nowrap; }
+
+.sym-group-label { font-size: 13px; font-weight: 700; color: var(--primary); margin-top: 4px; }
+
+.sym-duration { display: flex; align-items: flex-end; gap: 10px; }
+.sym-duration > .field { flex: 1 1 0; }
+.sym-duration .chips { flex: 0 0 auto; flex-wrap: nowrap; padding-bottom: 4px; }
+
+.sym-region-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sym-region-row .chip { max-width: 100%; white-space: normal; text-align: left; min-height: 44px; padding-top: 6px; padding-bottom: 6px; }
+
+.sym-error { color: var(--error); font-size: 13px; }
