@@ -68,6 +68,10 @@ class ExportTest {
             Backup.attachmentsDir(ctx).mkdirs()
             File(Backup.attachmentsDir(ctx), "att_demo_1.pdf").writeBytes(attachmentBytes)
             db.studies().insertAttachment(StudyAttachment(studyId = study.id, fileName = "att_demo_1.pdf", displayName = "Resultados laboratorio.pdf", mime = "application/pdf"))
+            // Vacunas y campos de perfil de la versión 1.1
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = today() - 60, name = "Influenza", dose = "Anual", nextDueEpochDay = today() + 305, place = "Centro de salud", lot = "L-9", notes = tricky))
+            db.vaccinations().insert(app.savia.data.Vaccination(epochDay = today() - 900, type = "otro", name = "Tétanos", remind = false))
+            db.profile().save(db.profile().get()!!.copy(relation = "Yo", avatarColor = 3))
         }
     }
 
@@ -125,7 +129,7 @@ class ExportTest {
             val sheets = wb.getElementsByTagNameNS("*", "sheet")
             val sheetNames = (0 until sheets.length).map { sheets.item(it).attributes.getNamedItem("name").nodeValue }
             assertEquals(tables.map { it.title }, sheetNames)
-            for (expected in listOf("Ciclo - días", "Ciclo - resumen", "Peso y mediciones", "Síntomas", "Estudios", "Resultados", "Medicamentos", "Tomas", "Citas", "Bienestar", "Autoexploración", "Perfil")) {
+            for (expected in listOf("Ciclo - días", "Ciclo - resumen", "Peso y mediciones", "Síntomas", "Estudios", "Resultados", "Vacunas", "Medicamentos", "Tomas", "Citas", "Bienestar", "Autoexploración", "Perfil")) {
                 assertTrue("falta la hoja $expected", expected in sheetNames)
             }
             assertTrue(sheetNames.all { it.length <= 31 })
@@ -391,7 +395,7 @@ class ExportTest {
         db.medications().clearIntakes(); db.medications().clear()
         db.studies().clearAttachments(); db.studies().clearResults(); db.studies().clear()
         db.symptoms().clear(); db.measurements().clear(); db.dailyLogs().clear(); db.cycle().clear()
-        db.appointments().clear(); db.selfExams().clear()
+        db.appointments().clear(); db.selfExams().clear(); db.vaccinations().clear()
         db.profile().save(app.savia.data.Profile())
         Backup.attachmentsDir(ctx).deleteRecursively()
     }
@@ -413,8 +417,9 @@ class ExportTest {
             assertTrue("attachments/att_demo_1.pdf" in names)
             val root = JSONObject(String(zip.getInputStream(zip.getEntry("data.json")).readBytes(), Charsets.UTF_8))
             assertEquals("savia-backup", root.getString("format"))
-            assertEquals(1, root.getInt("formatVersion"))
+            assertEquals(2, root.getInt("formatVersion"))
             assertEquals(before.symptoms.size, root.getJSONObject("tables").getJSONArray("symptoms").length())
+            assertEquals(2, root.getJSONObject("tables").getJSONArray("vaccinations").length())
         }
 
         // Borrar todo (como en un teléfono nuevo)
@@ -443,6 +448,10 @@ class ExportTest {
         assertEquals(before.medIntakes, after.medIntakes)
         assertEquals(before.appointments, after.appointments)
         assertEquals(before.selfExams, after.selfExams)
+        assertEquals(before.vaccinations, after.vaccinations)
+        assertEquals(2, after.vaccinations.size)
+        assertEquals("Yo", after.profile!!.relation)
+        assertEquals(3, after.profile!!.avatarColor)
         assertEquals(before, after)
         assertEquals(prefsBefore, Savia.prefs.export())
         assertEquals(31, Savia.prefs.cycleLength.value)

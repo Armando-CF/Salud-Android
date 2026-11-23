@@ -24,6 +24,28 @@ class ExportShots : ScreenshotBase() {
         shot("export_screen_dark", dark = true) { ExportScreen(rememberNavController()) }
     }
 
+    /** Varios perfiles, viendo los datos de una mascota: aviso de perfil, secciones propias y respaldo de todos. */
+    @Test
+    @Config(qualifiers = "w411dp-h2300dp-xhdpi")
+    fun exportScreenPetWithSeveralProfiles() {
+        DemoData.seed()
+        val dog = kotlinx.coroutines.runBlocking {
+            Savia.createProfile(app.savia.data.Profile(name = "Leo", sex = "M", relation = "Hijo"))
+            Savia.createProfile(app.savia.data.Profile(name = "Firulais", kind = "pet", species = "perro", breed = "Mestizo"))
+        }
+        Savia.switchTo(dog)
+        shotWhen("export_screen_pet", "Firulais") { ExportScreen(rememberNavController()) }
+    }
+
+    @Test
+    @Config(qualifiers = "w411dp-h2300dp-xhdpi")
+    fun exportScreenSeveralProfilesDark() {
+        DemoData.seed()
+        kotlinx.coroutines.runBlocking { Savia.createProfile(app.savia.data.Profile(name = "Firulais", kind = "pet", species = "perro")) }
+        ExportPrefs.setLastBackup(Savia.appContext, nowMillis() - 40 * 86_400_000L)
+        shot("export_screen_multi_dark", dark = true) { ExportScreen(rememberNavController()) }
+    }
+
     @Test
     fun exportScreenTop() {
         DemoData.seed()

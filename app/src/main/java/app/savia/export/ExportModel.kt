@@ -18,21 +18,51 @@ import app.savia.data.Study
 import app.savia.data.StudyAttachment
 import app.savia.data.StudyResult
 import app.savia.data.SymptomEntry
+import app.savia.data.Vaccination
 import app.savia.util.millisToEpochDay
 import app.savia.util.nowMillis
 import app.savia.util.today
 
 /** Bloques de información que se pueden exportar. */
-enum class ExportModule(val label: String, val slug: String, val description: String) {
+enum class ExportModule(
+    val label: String,
+    val slug: String,
+    val description: String,
+    /** ¿Aplica a mascotas? */
+    val forPets: Boolean = true,
+) {
     PERFIL("Mi ficha", "ficha", "Datos personales y de emergencia"),
-    CICLO("Ciclo menstrual", "ciclo", "Días registrados, ciclos y estadísticas"),
+    CICLO("Ciclo menstrual", "ciclo", "Días registrados, ciclos y estadísticas", forPets = false),
     SINTOMAS("Síntomas", "sintomas", "Malestares con intensidad y zona del cuerpo"),
     MEDICIONES("Peso y mediciones", "mediciones", "Peso, presión, glucosa y demás"),
-    BIENESTAR("Bienestar diario", "bienestar", "Ánimo, energía, sueño, agua y ejercicio"),
+    BIENESTAR("Bienestar diario", "bienestar", "Ánimo, energía, sueño, agua y ejercicio", forPets = false),
     ESTUDIOS("Estudios y chequeos", "estudios", "Estudios con sus resultados"),
+    VACUNAS("Vacunas", "vacunas", "Vacunas aplicadas y próximas fechas"),
     MEDICAMENTOS("Medicamentos", "medicamentos", "Tratamientos y tomas registradas"),
     CITAS("Citas médicas", "citas", "Citas pasadas y próximas"),
-    AUTOEXPLORACION("Autoexploración", "autoexploracion", "Registro de autoexploraciones"),
+    AUTOEXPLORACION("Autoexploración", "autoexploracion", "Registro de autoexploraciones", forPets = false);
+
+    /** Etiqueta adaptada al tipo de perfil. */
+    fun labelFor(isPet: Boolean): String = when {
+        !isPet -> label
+        this == PERFIL -> "Ficha"
+        this == CITAS -> "Citas con el veterinario"
+        this == VACUNAS -> "Vacunas y desparasitación"
+        else -> label
+    }
+
+    fun descriptionFor(isPet: Boolean): String = when {
+        !isPet -> description
+        this == PERFIL -> "Especie, raza, microchip y veterinario"
+        this == MEDICIONES -> "Peso, temperatura y demás"
+        this == VACUNAS -> "Vacunas, desparasitaciones y próximas fechas"
+        else -> description
+    }
+
+    companion object {
+        /** Módulos que tienen sentido para el tipo de perfil. */
+        fun availableFor(isPet: Boolean): List<ExportModule> = if (isPet) entries.filter { it.forPets } else entries.toList()
+    }
 }
 
 /** Formatos de salida. */
@@ -55,6 +85,10 @@ data class ExportOptions(
     fun inRange(epochDay: Long): Boolean =
         (fromDay == null || epochDay >= fromDay) && (toDay == null || epochDay <= toDay)
 
+    /** Las mismas opciones sin los módulos que no aplican al tipo de perfil (p. ej. el ciclo en una mascota). */
+    fun forProfile(isPet: Boolean): ExportOptions =
+        if (!isPet || modules.all { it.forPets }) this else copy(modules = modules.filterTo(LinkedHashSet()) { it.forPets })
+
     companion object {
         /** Todo, sin límite de fechas. */
         val ALL = ExportOptions()
@@ -69,7 +103,7 @@ class ExportData(
     val options: ExportOptions,
     val generatedAt: Long,
     val today: Long,
-    /** Perfil completo si se pidió PERFIL; si no, solo trae el nombre (para encabezados). */
+    /** Perfil completo si se pidió PERFIL; si no, solo trae nombre, tipo y especie (para encabezados). */
     val profile: Profile?,
     val symptoms: List<SymptomEntry>,
     val measurements: List<Measurement>,
@@ -87,14 +121,22 @@ class ExportData(
     val medIntakes: List<MedIntake>,
     val appointments: List<Appointment>,
     val selfExams: List<SelfExam>,
+    val vaccinations: List<Vaccination> = emptyList(),
 ) {
     fun has(module: ExportModule): Boolean = module in options.modules
+
+    /** ¿Los datos son de una mascota? */
+    val isPet: Boolean get() = profile?.isPet == true
+
+    /** Nombre del perfil, o "" si no se ha capturado. */
+    val profileName: String get() = profile?.name?.trim().orEmpty()
 
     /** No hay ningún registro que exportar (el perfil solo no cuenta si está en blanco). */
     val isEmpty: Boolean
         get() = symptoms.isEmpty() && measurements.isEmpty() && dailyLogs.isEmpty() && studies.isEmpty() &&
             cycleDays.isEmpty() && medications.isEmpty() && appointments.isEmpty() && selfExams.isEmpty() &&
-            !(has(ExportModule.PERFIL) && profile != null && profile != Profile())
+            vaccinations.isEmpty() &&
+            !(has(ExportModule.PERFIL) && profile != null && profile.copy(kind = "person", avatarColor = 0) != Profile())
 
     companion object {
         /** Lee de la base de datos lo que pidan las opciones. Llamar fuera del hilo principal. */
@@ -104,6 +146,10 @@ class ExportData(
             prefs: Prefs = Savia.prefs,
             today: Long = today(),
         ): ExportData {
+            val profile = db.profile().get()
+            // En una mascota no se exportan los módulos que no le aplican (ciclo, bienestar, autoexploración).
+            @Suppress("NAME_SHADOWING")
+            val options = options.forProfile(profile?.isPet == true)
             fun on(m: ExportModule) = m in options.modules
             val symptoms = if (on(ExportModule.SINTOMAS)) db.symptoms().getAll().filter { options.inRange(it.timestamp.millisToEpochDay()) } else emptyList()
             val measurements = if (on(ExportModule.MEDICIONES)) db.measurements().getAll().filter { options.inRange(it.timestamp.millisToEpochDay()) } else emptyList()
@@ -137,13 +183,18 @@ class ExportData(
             }
             val appointments = if (on(ExportModule.CITAS)) db.appointments().getAll().filter { options.inRange(it.timestamp.millisToEpochDay()) } else emptyList()
             val exams = if (on(ExportModule.AUTOEXPLORACION)) db.selfExams().getAll().filter { options.inRange(it.epochDay) } else emptyList()
-            val profile = db.profile().get()
+            // Una vacuna entra si su aplicación o su próxima fecha caen en el rango.
+            val vaccinations = if (on(ExportModule.VACUNAS)) {
+                db.vaccinations().getAll().filter { v -> options.inRange(v.epochDay) || (v.nextDueEpochDay?.let { options.inRange(it) } == true) }
+            } else {
+                emptyList()
+            }
 
             return ExportData(
                 options = options,
                 generatedAt = nowMillis(),
                 today = today,
-                profile = if (on(ExportModule.PERFIL)) profile else profile?.let { Profile(name = it.name) },
+                profile = if (on(ExportModule.PERFIL)) profile else profile?.let { Profile(name = it.name, kind = it.kind, species = it.species) },
                 symptoms = symptoms,
                 measurements = measurements,
                 dailyLogs = logs,
@@ -157,6 +208,7 @@ class ExportData(
                 medIntakes = intakes,
                 appointments = appointments,
                 selfExams = exams,
+                vaccinations = vaccinations,
             )
         }
     }

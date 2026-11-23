@@ -18,12 +18,14 @@ import app.savia.data.Study
 import app.savia.data.StudyAttachment
 import app.savia.data.StudyResult
 import app.savia.data.SymptomEntry
+import app.savia.data.Vaccination
 import app.savia.reminders.ReminderScheduler
 import app.savia.util.Fmt
 import app.savia.util.nowMillis
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
+import java.io.Closeable
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -34,10 +36,31 @@ import java.util.zip.ZipOutputStream
 /** Error con mensaje listo para mostrarse a la persona usuaria. */
 class BackupException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
-/** Cómo aplicar un respaldo sobre los datos actuales. */
+/** Cómo aplicar el respaldo de UN perfil sobre los datos actuales de un perfil. */
 enum class RestoreMode { REPLACE, MERGE }
 
-/** Contenido completo de la base de datos (todas las tablas, sin filtrar). */
+/** Qué contiene un archivo de respaldo. */
+enum class BackupKind {
+    /** Un solo perfil (`data.json` + `attachments/`). Es también el formato de la versión 1.0. */
+    PROFILE,
+
+    /** Todos los perfiles (`perfiles.json` + `perfiles/<id>/…`). */
+    ALL,
+}
+
+/** Cómo cargar un respaldo completo (de todos los perfiles). */
+enum class RestoreAllMode {
+    /**
+     * Deja el teléfono como el respaldo: el perfil principal del respaldo reemplaza al perfil 1 y los
+     * demás perfiles del respaldo se agregan como perfiles nuevos.
+     */
+    REPLACE,
+
+    /** No toca nada de lo actual: cada perfil del respaldo entra como perfil nuevo. */
+    ADD_AS_NEW,
+}
+
+/** Contenido completo de la base de datos de un perfil (todas las tablas, sin filtrar). */
 data class BackupTables(
     val profile: Profile? = null,
     val symptoms: List<SymptomEntry> = emptyList(),
@@ -51,11 +74,12 @@ data class BackupTables(
     val medIntakes: List<MedIntake> = emptyList(),
     val appointments: List<Appointment> = emptyList(),
     val selfExams: List<SelfExam> = emptyList(),
+    val vaccinations: List<Vaccination> = emptyList(),
 ) {
     /** Total de registros (sin contar el perfil). */
     val recordCount: Int
         get() = symptoms.size + measurements.size + dailyLogs.size + studies.size + studyResults.size + cycleDays.size +
-            medications.size + medIntakes.size + appointments.size + selfExams.size
+            medications.size + medIntakes.size + appointments.size + selfExams.size + vaccinations.size
 
     companion object {
         suspend fun load(db: SaviaDb): BackupTables = BackupTables(
@@ -71,14 +95,23 @@ data class BackupTables(
             medIntakes = db.medications().getAllIntakes(),
             appointments = db.appointments().getAll(),
             selfExams = db.selfExams().getAll(),
+            vaccinations = db.vaccinations().getAll(),
         )
     }
 }
 
-/** Datos generales de un respaldo. */
+/** Datos generales del respaldo de un perfil. */
 class BackupInfo(
     val createdAtMillis: Long,
     val appVersion: String,
+    val recordCount: Int,
+    val attachmentCount: Int,
+)
+
+/** Datos generales de un respaldo completo recién creado. */
+class BackupAllInfo(
+    val createdAtMillis: Long,
+    val profileCount: Int,
     val recordCount: Int,
     val attachmentCount: Int,
 )
@@ -93,53 +126,181 @@ class RestoreResult(
     /** Registros que ya existían idénticos y se omitieron. */
     val skipped: Int,
     val attachmentsRestored: Int,
+    /** Id del perfil creado, cuando el respaldo se cargó como perfil nuevo. */
+    val newProfileId: Int? = null,
+    /** Nombre del perfil que venía en el respaldo ("" si no tenía). */
+    val profileName: String = "",
 )
 
+/** Resultado de cargar un respaldo completo. */
+class RestoreAllResult(
+    val mode: RestoreAllMode,
+    /** 1 si el perfil principal del respaldo reemplazó al perfil 1; si no, 0. */
+    val profilesReplaced: Int,
+    /** Ids de los perfiles creados. */
+    val newProfileIds: List<Int>,
+    /** Perfiles que había en el teléfono y se eliminaron porque así se pidió. */
+    val profilesRemoved: Int,
+    val records: Int,
+    val attachmentsRestored: Int,
+)
+
+/** Resumen de un perfil dentro de un archivo de respaldo (para mostrarlo antes de restaurar). */
+class BackupProfileSummary(
+    /** Id que tenía el perfil en el teléfono donde se creó el respaldo. */
+    val originalId: Int,
+    val name: String,
+    /** "person" o "pet". */
+    val kind: String,
+    val species: String,
+    val recordCount: Int,
+    val attachmentCount: Int,
+) {
+    val isPet: Boolean get() = kind == "pet"
+    val displayName: String get() = name.trim().ifEmpty { if (isPet) "Mascota sin nombre" else "Perfil sin nombre" }
+}
+
+/** Lo que trae un archivo de respaldo. */
+class BackupSummary(
+    val kind: BackupKind,
+    val createdAtMillis: Long,
+    val appVersion: String,
+    val profiles: List<BackupProfileSummary>,
+) {
+    val recordCount: Int get() = profiles.sumOf { it.recordCount }
+}
+
+/** Dónde se lee o se escribe el respaldo de UN perfil: su base, sus ajustes y su carpeta de adjuntos. */
+class BackupTarget(val profileId: Int, val db: SaviaDb, val prefs: Prefs, val attachmentsDir: File) {
+    companion object {
+        fun of(profileId: Int): BackupTarget =
+            BackupTarget(profileId, Savia.dbFor(profileId), Savia.prefsFor(profileId), Savia.attachmentsDir(profileId))
+
+        fun active(): BackupTarget = of(Savia.activeId.value)
+
+        /** Destino al que pertenece [db] (el perfil activo si no se reconoce). */
+        fun forDb(db: SaviaDb, prefs: Prefs): BackupTarget {
+            val active = Savia.activeId.value
+            val id = if (Savia.dbFor(active) === db) active else Savia.profileIds.firstOrNull { Savia.dbFor(it) === db } ?: active
+            return BackupTarget(id, db, prefs, Savia.attachmentsDir(id))
+        }
+    }
+}
+
 /**
- * Respaldo completo de Savia: un .zip con `data.json` (todas las tablas + ajustes) y la carpeta
- * `attachments/` con los archivos adjuntos de los estudios. Es el único formato que se puede restaurar.
+ * Respaldos de Savia. Son los únicos archivos que se pueden volver a cargar en la app.
  *
- * El formato está versionado ([FORMAT_VERSION]); al leer se toleran campos faltantes o desconocidos
- * para que respaldos viejos sigan sirviendo en versiones futuras.
+ * - **De un perfil** ([write]): un .zip con `data.json` (todas las tablas + ajustes del perfil) y la carpeta
+ *   `attachments/` con los adjuntos de sus estudios.
+ * - **Completo** ([writeAll]): un .zip con `perfiles.json` (lista de perfiles) y, por cada perfil, su respaldo
+ *   individual dentro de `perfiles/<id>/` (mismo `data.json` + `attachments/`).
+ *
+ * El formato está versionado ([FORMAT_VERSION]); al leer se toleran campos faltantes o desconocidos para que
+ * los respaldos viejos (incluidos los de la versión 1.0, sin vacunas ni perfiles) sigan sirviendo.
  */
 object Backup {
     const val FORMAT = "savia-backup"
-    const val FORMAT_VERSION = 1
+
+    /** 1 = Savia 1.0 (un perfil). 2 = añade vacunas y los campos de perfil para mascotas y familia. */
+    const val FORMAT_VERSION = 2
     const val DATA_ENTRY = "data.json"
     const val ATTACHMENTS_PREFIX = "attachments/"
+
+    const val ALL_FORMAT = "savia-backup-all"
+    const val ALL_FORMAT_VERSION = 1
+    const val ALL_ENTRY = "perfiles.json"
+    const val ALL_PREFIX = "perfiles/"
     const val MIME = "application/zip"
 
     /** Ajustes que no se restauran (dependen del teléfono actual). */
     private val PREFS_NOT_RESTORED = setOf("app_lock")
 
-    fun attachmentsDir(context: Context): File = File(context.filesDir, "attachments")
+    /** Ajustes globales que viajan en el respaldo completo. */
+    private val GLOBAL_PREFS = setOf("theme_mode")
 
-    /** Copia interna que se guarda antes de un "Reemplazar todo", por si hay que deshacer. */
-    fun safetyFile(context: Context): File = File(File(context.filesDir, "safety"), "antes-de-restaurar.zip")
+    /** Carpeta de adjuntos del perfil activo. */
+    fun attachmentsDir(context: Context): File = Savia.attachmentsDir()
+
+    /** Copia interna de UN perfil que se guarda antes de reemplazar sus datos, por si hay que deshacer. */
+    fun safetyFile(context: Context, profileId: Int = Savia.activeId.value): File =
+        File(File(context.filesDir, "safety"), "antes-de-restaurar${Savia.profileSuffix(profileId)}.zip")
+
+    /** Copia interna de TODOS los perfiles que se guarda antes de reemplazar con un respaldo completo. */
+    fun fullSafetyFile(context: Context): File = File(File(context.filesDir, "safety"), "antes-de-restaurar-completo.zip")
 
     // ------------------------------------------------------------------ escribir
 
-    /** Escribe el respaldo completo. Llamar fuera del hilo principal. */
-    suspend fun write(context: Context, out: OutputStream, db: SaviaDb = Savia.db, prefs: Prefs = Savia.prefs): BackupInfo {
-        val tables = BackupTables.load(db)
+    /** Escribe el respaldo del perfil dueño de [db] (por defecto, el activo). Llamar fuera del hilo principal. */
+    suspend fun write(context: Context, out: OutputStream, db: SaviaDb = Savia.db, prefs: Prefs = Savia.prefs): BackupInfo =
+        write(context, out, BackupTarget.forDb(db, prefs))
+
+    /** Escribe el respaldo de un perfil concreto. */
+    suspend fun write(context: Context, out: OutputStream, target: BackupTarget): BackupInfo {
+        val tables = BackupTables.load(target.db)
         val now = nowMillis()
-        val json = toJson(tables, prefs.export(), now)
-        val dir = attachmentsDir(context)
+        var files = 0
+        ZipOutputStream(out).use { zip -> files = writeProfileEntries(zip, "", tables, target.prefs.export(), target.attachmentsDir, now) }
+        return BackupInfo(now, BuildConfig.VERSION_NAME, tables.recordCount, files)
+    }
+
+    /** Escribe `data.json` y `attachments/…` de un perfil bajo [prefix]. Devuelve cuántos adjuntos se copiaron. */
+    private fun writeProfileEntries(zip: ZipOutputStream, prefix: String, tables: BackupTables, prefs: Map<String, Any?>, attDir: File, now: Long): Int {
+        val json = toJson(tables, prefs, now)
         val files = tables.studyAttachments.map { it.fileName }.distinct()
             .filter { isSafeName(it) }
-            .map { File(dir, it) }
+            .map { File(attDir, it) }
             .filter { it.isFile }
-        ZipOutputStream(out).use { zip ->
-            zip.putNextEntry(ZipEntry(DATA_ENTRY))
-            zip.write(json.toString(1).toByteArray(Charsets.UTF_8))
+        zip.putNextEntry(ZipEntry(prefix + DATA_ENTRY))
+        zip.write(json.toString(1).toByteArray(Charsets.UTF_8))
+        zip.closeEntry()
+        for (f in files) {
+            zip.putNextEntry(ZipEntry(prefix + ATTACHMENTS_PREFIX + f.name))
+            f.inputStream().use { it.copyTo(zip) }
             zip.closeEntry()
-            for (f in files) {
-                zip.putNextEntry(ZipEntry(ATTACHMENTS_PREFIX + f.name))
-                f.inputStream().use { it.copyTo(zip) }
-                zip.closeEntry()
+        }
+        return files.size
+    }
+
+    /** Escribe el respaldo completo: todos los perfiles en un solo archivo. Llamar fuera del hilo principal. */
+    suspend fun writeAll(context: Context, out: OutputStream): BackupAllInfo {
+        val now = nowMillis()
+        val targets = Savia.profileIds.map { BackupTarget.of(it) }
+        val loaded = targets.map { it to BackupTables.load(it.db) }
+        val manifest = JSONObject()
+        manifest.put("format", ALL_FORMAT)
+        manifest.put("formatVersion", ALL_FORMAT_VERSION)
+        manifest.put("app", "Savia")
+        manifest.put("appVersion", BuildConfig.VERSION_NAME)
+        manifest.put("appVersionCode", BuildConfig.VERSION_CODE)
+        manifest.put("createdAtMillis", now)
+        manifest.put("createdAt", Fmt.isoDateTime(now))
+        manifest.put("activeProfileId", Savia.activeId.value)
+        manifest.put("nota", "Respaldo completo de Savia: cada carpeta de perfiles/ es el respaldo individual de un perfil.")
+        val global = JSONObject()
+        Savia.prefs.export().filterKeys { it in GLOBAL_PREFS }.forEach { (k, v) -> global.put(k, v ?: JSONObject.NULL) }
+        manifest.put("globalPrefs", global)
+        val arr = JSONArray()
+        for ((t, tables) in loaded) {
+            val p = tables.profile
+            arr.put(
+                JSONObject().put("id", t.profileId).put("name", p?.name ?: "").put("kind", p?.kind ?: "person")
+                    .put("species", p?.species ?: "").put("records", tables.recordCount)
+                    .put("attachments", tables.studyAttachments.size).put("path", "$ALL_PREFIX${t.profileId}/"),
+            )
+        }
+        manifest.put("profiles", arr)
+        var records = 0
+        var files = 0
+        ZipOutputStream(out).use { zip ->
+            zip.putNextEntry(ZipEntry(ALL_ENTRY))
+            zip.write(manifest.toString(1).toByteArray(Charsets.UTF_8))
+            zip.closeEntry()
+            for ((t, tables) in loaded) {
+                files += writeProfileEntries(zip, "$ALL_PREFIX${t.profileId}/", tables, t.prefs.export(), t.attachmentsDir, now)
+                records += tables.recordCount
             }
         }
-        return BackupInfo(now, BuildConfig.VERSION_NAME, tables.recordCount, files.size)
+        return BackupAllInfo(now, loaded.size, records, files)
     }
 
     // ------------------------------------------------------------------ JSON
@@ -223,6 +384,10 @@ object Backup {
         tb.put("self_exams", array(t.selfExams) { e ->
             JSONObject().put("id", e.id).put("epochDay", e.epochDay).put("type", e.type).put("normal", e.normal).put("notes", e.notes)
         })
+        tb.put("vaccinations", array(t.vaccinations) { v ->
+            JSONObject().put("id", v.id).put("epochDay", v.epochDay).put("type", v.type).put("name", v.name).put("dose", v.dose)
+                .putN("nextDueEpochDay", v.nextDueEpochDay).put("place", v.place).put("lot", v.lot).put("notes", v.notes).put("remind", v.remind)
+        })
         root.put("tables", tb)
         return root
     }
@@ -232,6 +397,8 @@ object Backup {
         .putN("goalWeightKg", p.goalWeightKg).put("bloodType", p.bloodType).put("allergies", p.allergies)
         .put("conditions", p.conditions).put("emergencyName", p.emergencyName).put("emergencyPhone", p.emergencyPhone)
         .put("doctorName", p.doctorName).put("doctorPhone", p.doctorPhone).put("insurance", p.insurance).put("notes", p.notes)
+        .put("kind", p.kind).put("species", p.species).put("breed", p.breed).putN("sterilized", p.sterilized)
+        .put("microchip", p.microchip).put("markings", p.markings).put("relation", p.relation).put("avatarColor", p.avatarColor)
 
     /** Valida el encabezado y devuelve (tablas, ajustes, info). Lanza [BackupException] con mensaje claro. */
     fun parse(root: JSONObject): Triple<BackupTables, Map<String, Any?>, BackupInfo> {
@@ -251,6 +418,10 @@ object Backup {
                     goalWeightKg = o.dblN("goalWeightKg"), bloodType = o.str("bloodType"), allergies = o.str("allergies"),
                     conditions = o.str("conditions"), emergencyName = o.str("emergencyName"), emergencyPhone = o.str("emergencyPhone"),
                     doctorName = o.str("doctorName"), doctorPhone = o.str("doctorPhone"), insurance = o.str("insurance"), notes = o.str("notes"),
+                    // Campos de la versión 2 del formato; en respaldos de Savia 1.0 no existen y quedan con su valor por defecto.
+                    kind = o.str("kind", "person").let { if (it == "pet") "pet" else "person" }, species = o.str("species"), breed = o.str("breed"),
+                    sterilized = if (o.isNull("sterilized")) null else o.optBoolean("sterilized"),
+                    microchip = o.str("microchip"), markings = o.str("markings"), relation = o.str("relation"), avatarColor = o.int("avatarColor"),
                 )
             }.firstOrNull(),
             symptoms = list(tb, "symptoms") { o ->
@@ -311,6 +482,12 @@ object Backup {
             selfExams = list(tb, "self_exams") { o ->
                 SelfExam(id = o.long("id"), epochDay = o.long("epochDay"), type = o.str("type"), normal = o.bool("normal", true), notes = o.str("notes"))
             },
+            vaccinations = list(tb, "vaccinations") { o ->
+                Vaccination(
+                    id = o.long("id"), epochDay = o.long("epochDay"), type = o.str("type", "vacuna"), name = o.str("name"), dose = o.str("dose"),
+                    nextDueEpochDay = o.longN("nextDueEpochDay"), place = o.str("place"), lot = o.str("lot"), notes = o.str("notes"), remind = o.bool("remind", true),
+                )
+            },
         )
         val prefs = LinkedHashMap<String, Any?>()
         root.optJSONObject("prefs")?.let { p ->
@@ -325,29 +502,66 @@ object Backup {
         return Triple(tables, prefs, info)
     }
 
-    // ------------------------------------------------------------------ restaurar
+    // ------------------------------------------------------------------ leer archivos
 
     private fun isSafeName(name: String): Boolean =
         name.isNotBlank() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }
 
+    /** Un perfil dentro de un archivo de respaldo ya extraído a una carpeta temporal. */
+    internal class ArchivedProfile(
+        val originalId: Int,
+        val tables: BackupTables,
+        val prefs: Map<String, Any?>,
+        val info: BackupInfo,
+        /** Carpeta temporal con sus adjuntos. */
+        val filesDir: File,
+    ) {
+        val summary: BackupProfileSummary
+            get() = BackupProfileSummary(
+                originalId = originalId,
+                name = tables.profile?.name ?: "",
+                kind = tables.profile?.kind ?: "person",
+                species = tables.profile?.species ?: "",
+                recordCount = tables.recordCount,
+                attachmentCount = filesDir.listFiles()?.count { it.isFile } ?: 0,
+            )
+    }
+
+    /** Archivo de respaldo ya leído. Hay que cerrarlo para borrar los temporales. */
+    internal class Archive(
+        val kind: BackupKind,
+        val profiles: List<ArchivedProfile>,
+        val createdAtMillis: Long,
+        val appVersion: String,
+        val globalPrefs: Map<String, Any?>,
+        private val tmp: File,
+    ) : Closeable {
+        fun summary(): BackupSummary = BackupSummary(kind, createdAtMillis, appVersion, profiles.map { it.summary })
+
+        override fun close() {
+            tmp.deleteRecursively()
+        }
+    }
+
+    private fun parseJson(text: String): JSONObject = try {
+        JSONObject(text)
+    } catch (e: JSONException) {
+        throw BackupException("El respaldo está dañado y no se pudo leer.", e)
+    }
+
+    private fun jsonMap(o: JSONObject?): Map<String, Any?> {
+        val out = LinkedHashMap<String, Any?>()
+        if (o != null) for (k in o.keys()) out[k] = if (o.isNull(k)) null else o.get(k)
+        return out
+    }
+
     /**
-     * Restaura un respaldo. Llamar fuera del hilo principal.
-     *
-     * - [RestoreMode.REPLACE]: borra todo lo actual y deja exactamente lo del respaldo (antes guarda una
-     *   copia interna en [safetyFile]).
-     * - [RestoreMode.MERGE]: conserva lo actual y agrega lo que falte. Los días del ciclo y de bienestar que
-     *   existan en ambos lados quedan como en el respaldo; los demás registros idénticos se omiten.
+     * Lee un archivo de respaldo (de un perfil —incluidos los de Savia 1.0— o completo) y lo deja listo para
+     * aplicarse. Lanza [BackupException] con un mensaje claro si el archivo no sirve.
      */
-    suspend fun restore(
-        context: Context,
-        input: InputStream,
-        mode: RestoreMode,
-        db: SaviaDb = Savia.db,
-        prefs: Prefs = Savia.prefs,
-    ): RestoreResult {
-        val tmp = File(context.cacheDir, "restore_tmp")
-        tmp.deleteRecursively()
-        val tmpFiles = File(tmp, "files").apply { mkdirs() }
+    internal fun open(context: Context, input: InputStream): Archive {
+        val tmp = File(File(context.cacheDir, "restore_tmp"), System.nanoTime().toString(36))
+        tmp.mkdirs()
         try {
             // 1) Copia local del archivo (el flujo de entrada solo se puede leer una vez).
             val source = File(tmp, "input.bin")
@@ -357,13 +571,15 @@ object Backup {
                 throw BackupException("No se pudo leer el archivo.", e)
             }
             if (source.length() < 2) throw BackupException("El archivo está vacío.")
-
-            // 2) Extraer data.json y adjuntos
             val head = ByteArray(2)
             source.inputStream().use { it.read(head) }
-            val jsonText: String
+
+            fun filesDir(profileId: Int?): File = File(tmp, if (profileId == null) "files" else "p$profileId/files").apply { mkdirs() }
+
+            var single: String? = null
+            var manifest: String? = null
+            val perProfile = LinkedHashMap<Int, String>()
             if (head[0] == 'P'.code.toByte() && head[1] == 'K'.code.toByte()) {
-                var text: String? = null
                 try {
                     ZipInputStream(source.inputStream().buffered()).use { zis ->
                         while (true) {
@@ -371,10 +587,25 @@ object Backup {
                             val name = e.name
                             when {
                                 e.isDirectory -> {}
-                                name == DATA_ENTRY -> text = zis.readBytes().toString(Charsets.UTF_8)
+                                name == DATA_ENTRY -> single = zis.readBytes().toString(Charsets.UTF_8)
+                                name == ALL_ENTRY -> manifest = zis.readBytes().toString(Charsets.UTF_8)
                                 name.startsWith(ATTACHMENTS_PREFIX) -> {
                                     val fname = name.removePrefix(ATTACHMENTS_PREFIX)
-                                    if (isSafeName(fname)) File(tmpFiles, fname).outputStream().use { zis.copyTo(it) }
+                                    if (isSafeName(fname)) File(filesDir(null), fname).outputStream().use { zis.copyTo(it) }
+                                }
+                                name.startsWith(ALL_PREFIX) -> {
+                                    val rest = name.removePrefix(ALL_PREFIX)
+                                    val slash = rest.indexOf('/')
+                                    val id = if (slash > 0) rest.substring(0, slash).toIntOrNull() else null
+                                    val sub = if (slash > 0) rest.substring(slash + 1) else ""
+                                    if (id != null && id > 0) {
+                                        if (sub == DATA_ENTRY) {
+                                            perProfile[id] = zis.readBytes().toString(Charsets.UTF_8)
+                                        } else if (sub.startsWith(ATTACHMENTS_PREFIX)) {
+                                            val fname = sub.removePrefix(ATTACHMENTS_PREFIX)
+                                            if (isSafeName(fname)) File(filesDir(id), fname).outputStream().use { zis.copyTo(it) }
+                                        }
+                                    }
                                 }
                             }
                             zis.closeEntry()
@@ -385,80 +616,274 @@ object Backup {
                 } catch (e: Exception) {
                     throw BackupException("El archivo está dañado y no se pudo abrir.", e)
                 }
-                jsonText = text ?: throw BackupException("Este archivo no es un respaldo de Savia.")
             } else {
                 // También se acepta el data.json suelto.
-                jsonText = source.readText(Charsets.UTF_8).trimStart('﻿', ' ', '\n', '\r', '\t')
-                if (!jsonText.startsWith("{")) throw BackupException("Este archivo no es un respaldo de Savia.")
+                val text = source.readText(Charsets.UTF_8).trimStart('﻿', ' ', '\n', '\r', '\t')
+                if (!text.startsWith("{")) throw BackupException("Este archivo no es un respaldo de Savia.")
+                single = text
             }
-            val root = try {
-                JSONObject(jsonText)
-            } catch (e: JSONException) {
-                throw BackupException("El respaldo está dañado y no se pudo leer.", e)
-            }
-            val (tables, backupPrefs, info) = parse(root)
+            source.delete()
 
-            // 3) Aplicar
-            val attDir = attachmentsDir(context).apply { mkdirs() }
-            val result = when (mode) {
-                RestoreMode.REPLACE -> {
-                    saveSafetyCopy(context, db, prefs)
-                    replaceAll(db, tables)
-                    // Adjuntos: quedan exactamente los del respaldo.
-                    attDir.listFiles()?.forEach { it.delete() }
-                    var n = 0
-                    tmpFiles.listFiles()?.forEach { f ->
-                        f.copyTo(File(attDir, f.name), overwrite = true)
-                        n++
-                    }
-                    prefs.import(backupPrefs.filterKeys { it !in PREFS_NOT_RESTORED })
-                    RestoreResult(mode, info, added = tables.recordCount, updated = 0, skipped = 0, attachmentsRestored = n)
+            val manifestText = manifest
+            if (manifestText != null) {
+                // 2a) Respaldo completo
+                val root = parseJson(manifestText)
+                if (root.optString("format") != ALL_FORMAT) throw BackupException("Este archivo no es un respaldo de Savia.")
+                val version = root.optInt("formatVersion", 0)
+                if (version < 1) throw BackupException("El respaldo está dañado o incompleto.")
+                if (version > ALL_FORMAT_VERSION) {
+                    throw BackupException("Este respaldo se creó con una versión más nueva de Savia. Actualiza la app para poder restaurarlo.")
                 }
-                RestoreMode.MERGE -> {
-                    // Si un adjunto del respaldo choca con uno distinto ya existente, se guarda con otro nombre.
-                    val rename = HashMap<String, String>()
-                    val toCopy = ArrayList<Pair<File, File>>()
-                    val stamp = System.currentTimeMillis().toString(36)
-                    tmpFiles.listFiles()?.forEach { f ->
-                        val target = File(attDir, f.name)
-                        if (!target.exists()) {
-                            toCopy += f to target
-                        } else if (target.length() != f.length()) {
-                            val newName = "r${stamp}_${f.name}"
-                            rename[f.name] = newName
-                            toCopy += f to File(attDir, newName)
-                        }
-                    }
-                    val counts = merge(db, tables, rename)
-                    toCopy.forEach { (from, to) -> from.copyTo(to, overwrite = true) }
-                    if (tables.cycleDays.isNotEmpty() && backupPrefs["cycle_enabled"] != false) prefs.cycleEnabled.value = true
-                    RestoreResult(mode, info, added = counts[0], updated = counts[1], skipped = counts[2], attachmentsRestored = toCopy.size)
+                val listed = ArrayList<Int>()
+                root.optJSONArray("profiles")?.let { arr ->
+                    for (i in 0 until arr.length()) arr.optJSONObject(i)?.optInt("id", 0)?.takeIf { it > 0 }?.let { listed += it }
                 }
+                val ids = listed.distinct().ifEmpty { perProfile.keys.sorted() }
+                if (ids.isEmpty()) throw BackupException("El respaldo está dañado: no contiene perfiles.")
+                val profiles = ids.map { id ->
+                    val text = perProfile[id] ?: throw BackupException("El respaldo está incompleto: falta la información de uno de los perfiles.")
+                    val (tables, prefs, info) = parse(parseJson(text))
+                    ArchivedProfile(id, tables, prefs, info, filesDir(id))
+                }
+                return Archive(
+                    BackupKind.ALL, profiles, root.optLong("createdAtMillis", 0L), root.optString("appVersion", ""),
+                    jsonMap(root.optJSONObject("globalPrefs")), tmp,
+                )
             }
-            try {
-                ReminderScheduler.rescheduleAll(context.applicationContext)
-            } catch (_: Exception) {
-                // Los recordatorios se reprograman de todos modos al abrir la app.
-            }
-            return result
-        } finally {
+            // 2b) Respaldo de un perfil
+            val text = single ?: throw BackupException("Este archivo no es un respaldo de Savia.")
+            val (tables, prefs, info) = parse(parseJson(text))
+            return Archive(BackupKind.PROFILE, listOf(ArchivedProfile(1, tables, prefs, info, filesDir(null))), info.createdAtMillis, info.appVersion, emptyMap(), tmp)
+        } catch (e: Throwable) {
             tmp.deleteRecursively()
+            throw e
         }
     }
 
-    /** Guarda una copia interna de los datos actuales (si hay algo que guardar). */
-    private suspend fun saveSafetyCopy(context: Context, db: SaviaDb, prefs: Prefs) {
-        val current = BackupTables.load(db)
-        if (current.recordCount == 0 && (current.profile == null || current.profile == Profile())) return
+    /** Dice qué trae un archivo de respaldo (tipo, perfiles, cuántos registros) sin cambiar nada. */
+    suspend fun inspect(context: Context, input: InputStream): BackupSummary = open(context, input).use { it.summary() }
+
+    // ------------------------------------------------------------------ restaurar
+
+    private fun reschedule(context: Context) {
         try {
-            val f = safetyFile(context)
+            ReminderScheduler.rescheduleAll(context.applicationContext)
+        } catch (_: Exception) {
+            // Los recordatorios se reprograman de todos modos al abrir la app.
+        }
+    }
+
+    /**
+     * Restaura el respaldo de UN perfil sobre el perfil dueño de [db] (por defecto, el activo).
+     * Llamar fuera del hilo principal.
+     *
+     * - [RestoreMode.REPLACE]: borra lo actual de ese perfil y deja exactamente lo del respaldo (antes guarda
+     *   una copia interna en [safetyFile]).
+     * - [RestoreMode.MERGE]: conserva lo actual y agrega lo que falte. Los días del ciclo y de bienestar que
+     *   existan en ambos lados quedan como en el respaldo; los demás registros idénticos se omiten.
+     *
+     * Para un respaldo completo (varios perfiles) usa [restoreAll].
+     */
+    suspend fun restore(
+        context: Context,
+        input: InputStream,
+        mode: RestoreMode,
+        db: SaviaDb = Savia.db,
+        prefs: Prefs = Savia.prefs,
+    ): RestoreResult = restore(context, input, mode, BackupTarget.forDb(db, prefs))
+
+    suspend fun restore(context: Context, input: InputStream, mode: RestoreMode, target: BackupTarget): RestoreResult {
+        open(context, input).use { a ->
+            if (a.kind == BackupKind.ALL) {
+                throw BackupException("Este archivo es un respaldo completo con varios perfiles; no se puede cargar sobre un solo perfil.")
+            }
+            val result = applyProfile(context, a.profiles[0], mode, target, safetyCopy = true, importGlobalPrefs = target.profileId == 1)
+            reschedule(context)
+            return result
+        }
+    }
+
+    /**
+     * Carga el respaldo de un perfil como PERFIL NUEVO (no toca ninguno de los actuales).
+     * El id del perfil creado viene en [RestoreResult.newProfileId]; no se activa.
+     */
+    suspend fun restoreAsNewProfile(context: Context, input: InputStream): RestoreResult {
+        open(context, input).use { a ->
+            if (a.kind == BackupKind.ALL) {
+                throw BackupException("Este archivo es un respaldo completo con varios perfiles; cárgalo con la opción de agregar todos los perfiles.")
+            }
+            val result = addAsNewProfile(context, a.profiles[0])
+            reschedule(context)
+            return result
+        }
+    }
+
+    /**
+     * Carga un respaldo completo (también acepta el de un solo perfil).
+     *
+     * - [RestoreAllMode.ADD_AS_NEW]: cada perfil del respaldo entra como perfil nuevo; no se toca nada.
+     * - [RestoreAllMode.REPLACE]: el perfil principal del respaldo (el que tenía id 1) reemplaza al perfil 1
+     *   y los demás se agregan como nuevos. Antes se guarda una copia interna de todo ([fullSafetyFile]).
+     *   Con [removeOtherProfiles] además se eliminan los otros perfiles que había en el teléfono, de modo que
+     *   quede exactamente lo del respaldo.
+     */
+    suspend fun restoreAll(
+        context: Context,
+        input: InputStream,
+        mode: RestoreAllMode,
+        removeOtherProfiles: Boolean = false,
+    ): RestoreAllResult {
+        open(context, input).use { a ->
+            val existingOthers = Savia.profileIds.filter { it != 1 }
+            val newIds = ArrayList<Int>()
+            var replaced = 0
+            var removed = 0
+            var records = 0
+            var attachments = 0
+            suspend fun addNew(ap: ArchivedProfile) {
+                val r = addAsNewProfile(context, ap)
+                r.newProfileId?.let { newIds += it }
+                records += r.added
+                attachments += r.attachmentsRestored
+            }
+            when (mode) {
+                RestoreAllMode.ADD_AS_NEW -> for (ap in a.profiles) addNew(ap)
+                RestoreAllMode.REPLACE -> {
+                    val copied = saveFullSafetyCopy(context)
+                    val willRemove = removeOtherProfiles && existingOthers.isNotEmpty()
+                    if (willRemove && !copied) {
+                        throw BackupException("No se pudo guardar una copia de seguridad de tus perfiles actuales, así que no se cambió nada. Intenta de nuevo sin eliminar los otros perfiles.")
+                    }
+                    val main = a.profiles.firstOrNull { it.originalId == 1 } ?: a.profiles.first()
+                    val currentKind = Savia.dbFor(1).profile().get()?.kind ?: "person"
+                    val mainKind = main.tables.profile?.kind ?: "person"
+                    for (ap in a.profiles) {
+                        if (ap === main && mainKind == currentKind) {
+                            val r = applyProfile(context, ap, RestoreMode.REPLACE, BackupTarget.of(1), safetyCopy = true, importGlobalPrefs = true)
+                            replaced = 1
+                            records += r.added
+                            attachments += r.attachmentsRestored
+                        } else {
+                            addNew(ap)
+                        }
+                    }
+                    val global = a.globalPrefs.filterKeys { it in GLOBAL_PREFS }
+                    if (global.isNotEmpty()) Savia.prefsFor(1).import(global)
+                    // Solo al final, cuando todo lo del respaldo ya quedó cargado.
+                    if (willRemove) {
+                        for (id in existingOthers) {
+                            Savia.deleteProfile(id)
+                            removed++
+                        }
+                    }
+                }
+            }
+            reschedule(context)
+            return RestoreAllResult(mode, replaced, newIds, removed, records, attachments)
+        }
+    }
+
+    private suspend fun addAsNewProfile(context: Context, ap: ArchivedProfile): RestoreResult {
+        val base = (ap.tables.profile ?: Profile()).copy(id = 1)
+        val id = Savia.createProfile(base)
+        try {
+            val r = applyProfile(context, ap, RestoreMode.REPLACE, BackupTarget.of(id), safetyCopy = false, importGlobalPrefs = false)
+            Savia.loadInfo(id)
+            return RestoreResult(r.mode, r.info, r.added, 0, 0, r.attachmentsRestored, newProfileId = id, profileName = base.name.trim())
+        } catch (e: Throwable) {
+            runCatching { Savia.deleteProfile(id) }
+            throw e
+        }
+    }
+
+    /** Aplica un perfil del respaldo sobre [target]. */
+    private suspend fun applyProfile(
+        context: Context,
+        ap: ArchivedProfile,
+        mode: RestoreMode,
+        target: BackupTarget,
+        safetyCopy: Boolean,
+        /** También restaura los ajustes globales que traiga el respaldo (tema). Solo para el perfil principal. */
+        importGlobalPrefs: Boolean,
+    ): RestoreResult {
+        val db = target.db
+        val prefs = target.prefs
+        val tables = ap.tables
+        val attDir = target.attachmentsDir.apply { mkdirs() }
+        val backupFiles = ap.filesDir.listFiles()?.filter { it.isFile } ?: emptyList()
+        val name = tables.profile?.name?.trim().orEmpty()
+        return when (mode) {
+            RestoreMode.REPLACE -> {
+                if (safetyCopy) saveSafetyCopy(context, target)
+                replaceAll(db, tables)
+                // Adjuntos: quedan exactamente los del respaldo. (Solo archivos: dentro de la carpeta del
+                // perfil 1 viven las subcarpetas de los demás perfiles.)
+                attDir.listFiles()?.forEach { if (it.isFile) it.delete() }
+                var n = 0
+                for (f in backupFiles) {
+                    f.copyTo(File(attDir, f.name), overwrite = true)
+                    n++
+                }
+                val scoped = prefs.profileScoped.mapTo(HashSet()) { it.key }
+                prefs.import(ap.prefs.filterKeys { it !in PREFS_NOT_RESTORED && (importGlobalPrefs || it in scoped) })
+                RestoreResult(mode, ap.info, added = tables.recordCount, updated = 0, skipped = 0, attachmentsRestored = n, profileName = name)
+            }
+            RestoreMode.MERGE -> {
+                // Si un adjunto del respaldo choca con uno distinto ya existente, se guarda con otro nombre.
+                val rename = HashMap<String, String>()
+                val toCopy = ArrayList<Pair<File, File>>()
+                val stamp = System.currentTimeMillis().toString(36)
+                for (f in backupFiles) {
+                    val dest = File(attDir, f.name)
+                    if (!dest.exists()) {
+                        toCopy += f to dest
+                    } else if (dest.length() != f.length()) {
+                        val newName = "r${stamp}_${f.name}"
+                        rename[f.name] = newName
+                        toCopy += f to File(attDir, newName)
+                    }
+                }
+                val counts = merge(db, tables, rename)
+                toCopy.forEach { (from, to) -> from.copyTo(to, overwrite = true) }
+                if (tables.cycleDays.isNotEmpty() && ap.prefs["cycle_enabled"] != false) prefs.cycleEnabled.value = true
+                RestoreResult(mode, ap.info, added = counts[0], updated = counts[1], skipped = counts[2], attachmentsRestored = toCopy.size, profileName = name)
+            }
+        }
+    }
+
+    /** Guarda una copia interna de los datos actuales de un perfil (si hay algo que guardar). */
+    private suspend fun saveSafetyCopy(context: Context, target: BackupTarget) {
+        val current = BackupTables.load(target.db)
+        if (current.recordCount == 0 && (current.profile == null || current.profile.copy(kind = "person", avatarColor = 0) == Profile())) return
+        try {
+            val f = safetyFile(context, target.profileId)
             f.parentFile?.mkdirs()
             val part = File(f.parentFile, f.name + ".tmp")
-            part.outputStream().use { write(context, it, db, prefs) }
+            part.outputStream().use { write(context, it, target) }
             if (f.exists()) f.delete()
             part.renameTo(f)
         } catch (_: Exception) {
             // Es solo una red de seguridad; si falla no se bloquea la restauración.
+        }
+    }
+
+    /**
+     * Guarda una copia interna de TODOS los perfiles. Devuelve false si había algo que guardar y no se pudo.
+     */
+    private suspend fun saveFullSafetyCopy(context: Context): Boolean {
+        return try {
+            if (Savia.profileIds == listOf(1)) {
+                val current = BackupTables.load(Savia.dbFor(1))
+                if (current.recordCount == 0 && (current.profile == null || current.profile == Profile())) return true
+            }
+            val f = fullSafetyFile(context)
+            f.parentFile?.mkdirs()
+            val part = File(f.parentFile, f.name + ".tmp")
+            part.outputStream().use { writeAll(context, it) }
+            if (f.exists()) f.delete()
+            part.renameTo(f)
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -477,6 +902,7 @@ object Backup {
             db.cycle().clear()
             db.appointments().clear()
             db.selfExams().clear()
+            db.vaccinations().clear()
             db.profile().save((t.profile ?: Profile()).copy(id = 1))
 
             db.symptoms().insertAll(t.symptoms)
@@ -490,6 +916,7 @@ object Backup {
             db.medications().insertIntakes(t.medIntakes.filter { it.medicationId in medIds })
             db.appointments().insertAll(t.appointments)
             db.selfExams().insertAll(t.selfExams)
+            db.vaccinations().insertAll(t.vaccinations)
         }
     }
 
@@ -509,6 +936,13 @@ object Backup {
         doctorPhone = cur.doctorPhone.ifBlank { b.doctorPhone },
         insurance = cur.insurance.ifBlank { b.insurance },
         notes = cur.notes.ifBlank { b.notes },
+        // El tipo de perfil (persona/mascota) nunca cambia al combinar.
+        species = cur.species.ifBlank { b.species },
+        breed = cur.breed.ifBlank { b.breed },
+        sterilized = cur.sterilized ?: b.sterilized,
+        microchip = cur.microchip.ifBlank { b.microchip },
+        markings = cur.markings.ifBlank { b.markings },
+        relation = cur.relation.ifBlank { b.relation },
     )
 
     /** @return [agregados, actualizados, omitidos] */
@@ -563,6 +997,11 @@ object Backup {
             val exNew = t.selfExams.map { it.copy(id = 0) }.filter { exSeen.add(it) }
             db.selfExams().insertAll(exNew)
             added += exNew.size; skipped += t.selfExams.size - exNew.size
+
+            val vacSeen = db.vaccinations().getAll().mapTo(HashSet()) { it.copy(id = 0) }
+            val vacNew = t.vaccinations.map { it.copy(id = 0) }.filter { vacSeen.add(it) }
+            db.vaccinations().insertAll(vacNew)
+            added += vacNew.size; skipped += t.vaccinations.size - vacNew.size
 
             // Estudios (con resultados y adjuntos): se remapean las llaves foráneas.
             val curStudies = HashMap<Study, Long>()
