@@ -2,10 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  Angry, CalendarClock, ChevronDown, ChevronRight, ClipboardCheck, Download, Droplet, FlaskConical, Frown, HeartPulse, Laugh,
+  Angry, CalendarClock, Check, ChevronDown, ChevronRight, ClipboardCheck, Download, Droplet, FlaskConical, Frown, HeartPulse, Laugh,
   Meh, NotebookPen, PersonStanding, Pill as PillIcon, Scale, Settings, Share, Smile, Syringe, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react'
-import { AVATAR_COLORS, PetSpecies } from '../../data/catalogs'
+import { AVATAR_COLORS, PetSpecies, VaccinationTypes } from '../../data/catalogs'
 import { dbFor } from '../../data/db'
 import { getSetting, usePref } from '../../data/prefs'
 import { activateProfile, allProfiles, displayName, isPet as infoIsPet, profileSubtitle, useActive, useProfileRow } from '../../data/profiles'
@@ -16,6 +16,8 @@ import { isIos, isStandalone } from '../../lib/files'
 import { Avatar, Card, IconButton, NavRow, Page, PawIcon, Sparkline, intensityColor } from '../../ui'
 import { CycleSummaryCard } from '../cycle'
 import { upcomingFollowUps } from '../studies'
+import { dosesForDay, takeDose, undoDose } from '../meds'
+import { VaccineLogic } from '../vaccines'
 import { weightSummary, weightText as measureWeightText } from '../measure'
 import './home.css'
 
@@ -38,20 +40,24 @@ export const weightText = (kg: number, pet: boolean): string => measureWeightTex
 /** Lo pendiente HOY de otro perfil (se completa al integrar los módulos de medicamentos y vacunas). */
 export interface OtherStatus { info: ProfileInfo; notes: string[]; urgent: boolean }
 
-/** Extensiones que aportan otros módulos a la pantalla de inicio (se registran en `homeParts.ts`). */
-export interface HomeParts {
-  /** Tarjeta del ciclo (solo si el módulo está activo). */
-  cycleCard?: () => ReactNode
-  /** Tarjeta de medicamentos de hoy. */
-  medsCard?: () => ReactNode
-  /** Tarjetas de vacunas pendientes o próximas. */
-  vaccineCards?: () => ReactNode
-  /** Tarjetas de seguimientos de estudios. */
-  followUpCards?: () => ReactNode
-  /** Pendientes de otros perfiles. */
-  others?: (profiles: ProfileInfo[], day: number) => Promise<OtherStatus[]>
+/** Revisa los demás perfiles: tomas pendientes de hoy, citas en las próximas 48 h y vacunas vencidas o cercanas. */
+export async function othersToday(others: ProfileInfo[], day: number): Promise<OtherStatus[]> {
+  const now = nowMillis()
+  const out: OtherStatus[] = []
+  for (const info of others) {
+    const odb = dbFor(info.id)
+    const notes: string[] = []
+    let urgent = false
+    const pending = dosesForDay(await odb.medications.toArray(), await odb.medIntakes.where('epochDay').equals(day).toArray(), day).filter((d) => !d.intake).length
+    if (pending > 0) { notes.push(pending === 1 ? '1 toma pendiente' : `${pending} tomas pendientes`); urgent = true }
+    const next = (await odb.appointments.toArray()).filter((a) => !a.done && a.timestamp >= now - 3_600_000 && a.timestamp <= now + 2 * 86_400_000).sort((a, b) => a.timestamp - b.timestamp)[0]
+    if (next) notes.push(`Cita ${Fmt.relativeDay(millisToEpochDay(next.timestamp)).toLowerCase()} ${Fmt.time(next.timestamp)}`)
+    const due = VaccineLogic.upcoming(await odb.vaccinations.toArray(), day).find((d) => d.dueDay <= day + 7)
+    if (due) { notes.push(due.overdue ? `${due.vaccination.name}: vencida` : `${due.vaccination.name} ${Fmt.daysFromNow(due.dueDay)}`); if (due.overdue) urgent = true }
+    if (notes.length) out.push({ info, notes, urgent })
+  }
+  return out
 }
-export const homeParts: HomeParts = {}
 
 export function HomePage() {
   const nav = useNavigate()
@@ -65,9 +71,15 @@ export function HomePage() {
   const log = useLiveQuery(async () => ({ row: await db.dailyLogs.get(t) }), [db, t])?.row
   const appts = useLiveQuery(() => db.appointments.where('timestamp').aboveOrEqual(nowMillis() - 3_600_000).filter((a) => !a.done).sortBy('timestamp'), [db]) ?? []
   const counts = useLiveQuery(async () => (await db.symptoms.count()) + (await db.measurements.count()) + (await db.cycleDays.count()) + (await db.vaccinations.count()) + (await db.medications.count()), [db])
-  const others = useLiveQuery(async () => (homeParts.others ? homeParts.others((await allProfiles()).filter((p) => p.id !== info.id), t) : []), [info.id, t]) ?? []
+  const others = useLiveQuery(async () => othersToday((await allProfiles()).filter((p) => p.id !== info.id), t), [info.id, t]) ?? []
   const lastBackup = useLiveQuery(() => getSetting('lastBackup'), []) ?? 0
   const studies = useLiveQuery(() => db.studies.toArray(), [db]) ?? []
+  const meds = useLiveQuery(() => db.medications.toArray(), [db]) ?? []
+  const intakes = useLiveQuery(() => db.medIntakes.where('epochDay').equals(t).toArray(), [db, t]) ?? []
+  const vaccinations = useLiveQuery(() => db.vaccinations.toArray(), [db]) ?? []
+  const doses = dosesForDay(meds, intakes, t)
+  const pendingDoses = doses.filter((d) => !d.intake).length
+  const dueVaccines = VaccineLogic.dueSoon(vaccinations, t, 30).slice(0, 3)
   const followUps = upcomingFollowUps(studies, t).filter((s) => (s.followUpEpochDay ?? 0) <= t + 45).slice(0, 2)
 
   const name = (profile?.name ?? info.name).trim()
@@ -75,7 +87,7 @@ export function HomePage() {
   const title = self ? (name ? `Hola, ${name.split(' ')[0]}` : 'Hola') : displayName(info)
   const subtitle = [self ? '' : profileSubtitle(info), Fmt.dateLong(t)].filter(Boolean).join(' · ')
   const ws = weightSummary(weights, isPet ? null : profile?.heightCm ?? null, profile?.goalWeightKg ?? null)
-  const empty = counts === 0 && appts.length === 0
+  const empty = counts === 0 && appts.length === 0 && doses.length === 0
   const backupDue = (counts ?? 0) > 0 && (lastBackup === 0 || nowMillis() - lastBackup > 30 * 86_400_000)
 
   const setMood = async (mood: number) => {
@@ -152,7 +164,20 @@ export function HomePage() {
         </Card>
       )}
 
-      {homeParts.medsCard?.()}
+      {doses.length > 0 && (
+        <Card title="Medicamentos de hoy" action={<button className="btn text small" onClick={() => nav('/medicamentos')}>Ver todo</button>}>
+          <div className="small muted">{pendingDoses === 0 ? 'Todo al día. ¡Bien!' : pendingDoses === 1 ? 'Falta 1 toma' : `Faltan ${pendingDoses} tomas`}</div>
+          {doses.slice(0, 6).map((d) => (
+            <div key={`${d.med.id}-${d.slot}`} className="list-row tap" role="button" aria-label={`${d.slot} ${d.med.name}`}
+              onClick={() => { void (d.intake ? undoDose(db, d, t) : takeDose(db, d, t)) }}>
+              <span className={`home-check${d.taken ? ' on' : ''}`}>{d.taken && <Check size={18} />}</span>
+              <b>{d.slot}</b>
+              <span className="grow ellipsis">{d.med.name}{d.med.dose ? ` · ${d.med.dose}` : ''}</span>
+              {d.skipped && <span className="small muted">Omitida</span>}
+            </div>
+          ))}
+        </Card>
+      )}
 
       {appts[0] && (
         <Card onClick={() => nav('/citas')}>
@@ -167,7 +192,18 @@ export function HomePage() {
         </Card>
       )}
 
-      {homeParts.vaccineCards?.()}
+      {dueVaccines.map((d) => (
+        <Card key={d.vaccination.id} onClick={() => nav('/vacunas')}>
+          <div className="row">
+            <Badge icon={<Syringe size={24} />} color={d.overdue ? 'var(--bad)' : 'var(--good)'} />
+            <div className="grow">
+              <div className="home-kicker" style={{ color: d.overdue ? 'var(--bad)' : 'var(--good)' }}>{d.overdue ? 'Vencida' : 'Próxima'} · {Fmt.daysFromNow(d.dueDay)}</div>
+              <div className="home-title ellipsis">{d.vaccination.name}</div>
+              <div className="small muted">{VaccinationTypes.label(d.vaccination.type)} · {Fmt.date(d.dueDay)}</div>
+            </div>
+          </div>
+        </Card>
+      ))}
 
       {ws && (
         <Card onClick={() => nav('/mediciones/weight')}>
