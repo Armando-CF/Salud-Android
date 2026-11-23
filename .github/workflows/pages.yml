@@ -1,10 +1,13 @@
-# Compila Savia Web (carpeta web/) y la publica en GitHub Pages en cada push.
-# Requisito único: en el repositorio, Settings → Pages → Build and deployment → Source: "GitHub Actions".
+# Compila Savia Web (carpeta web/) y la publica en GitHub Pages en cada push a la rama principal.
+# Requisitos (una sola vez):
+#   1. GitHub Pages gratis requiere que el repositorio sea público (o un plan de pago si es privado).
+#   2. En el repositorio: Settings → Pages → Build and deployment → Source: "GitHub Actions".
+# También se puede lanzar a mano desde la pestaña Actions ("Run workflow").
 name: Publicar Savia Web en GitHub Pages
 
 on:
   push:
-    branches: [main, ccr-4f5a2648-5b2pk6]
+    branches: [main]
     paths:
       - 'web/**'
       - 'app/src/main/assets/atlas.json'
