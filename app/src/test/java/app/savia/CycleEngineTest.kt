@@ -58,6 +58,10 @@ class CycleEngineTest {
         // Con retraso, la predicción se ancla a hoy.
         assertEquals(1034L, a.nextPeriodStart)
         assertEquals(0, a.daysUntilNext)
+        // Hoy sigue contando desde el último periodo real (día 35), no como día 1 de un periodo estimado.
+        assertEquals(35, a.currentCycleDay)
+        assertTrue(a.info(1034).predictedPeriod)
+        assertEquals(2, a.info(1035).cycleDay)
     }
 
     @Test

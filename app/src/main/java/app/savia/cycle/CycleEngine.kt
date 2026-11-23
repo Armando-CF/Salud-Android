@@ -97,23 +97,23 @@ class CycleAnalysis(
 
     fun info(day: Long): DayInfo {
         val inPeriod = periods.any { day in it }
-        val idx = allStarts.indexOfLast { it <= day }
-        if (idx < 0) return DayInfo(day, null, if (inPeriod) Phase.MENSTRUAL else Phase.DESCONOCIDA, inPeriod, false, false, false)
-        val start = allStarts[idx]
-        val next = allStarts.getOrNull(idx + 1) ?: (start + cycleLength)
+        // Un inicio estimado para HOY (periodo esperado o con retraso, aún sin registrar) no reinicia
+        // la cuenta de hoy: hoy sigue siendo el día N del ciclo anterior.
+        val start = allStarts.lastOrNull { it <= day && !(it == today && day == today && periods.none { p -> p.start == it }) }
+            ?: return DayInfo(day, null, if (inPeriod) Phase.MENSTRUAL else Phase.DESCONOCIDA, inPeriod, false, false, false)
+        val next = allStarts.firstOrNull { it > start } ?: (start + cycleLength)
         val cycleDay = (day - start + 1).toInt()
         if (cycleDay > CycleEngine.MAX_VALID_CYCLE + 30) {
             return DayInfo(day, null, Phase.DESCONOCIDA, inPeriod, false, false, false)
         }
-        val isPredictedStart = start in predictedStarts && periods.none { it.start == start }
-        val predictedPeriod = !inPeriod && isPredictedStart && day >= today && day < start + periodLength
+        val predictedPeriod = !inPeriod && day >= today &&
+            predictedStarts.any { s -> periods.none { it.start == s } && day >= s && day < s + periodLength }
         val ov = ovulationOf(start, next)
         val ovulation = ov != null && day == ov
         val fertile = ov != null && day in (ov - 5)..(ov + 1)
-        val actualPeriod = periods.firstOrNull { it.start == start }
         val phase = when {
-            inPeriod || predictedPeriod -> Phase.MENSTRUAL
-            actualPeriod == null && cycleDay <= periodLength -> Phase.MENSTRUAL
+            inPeriod -> Phase.MENSTRUAL
+            predictedPeriod && day > today -> Phase.MENSTRUAL
             ovulation -> Phase.OVULACION
             fertile -> Phase.FERTIL
             ov != null && day < ov -> Phase.FOLICULAR
