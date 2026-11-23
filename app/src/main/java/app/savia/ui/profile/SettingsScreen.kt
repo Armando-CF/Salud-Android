@@ -31,11 +31,13 @@ import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.WaterDrop
@@ -60,9 +62,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationManagerCompat
@@ -80,6 +85,7 @@ import app.savia.ui.components.InfoNote
 import app.savia.ui.components.NavRow
 import app.savia.ui.components.SaviaScaffold
 import app.savia.ui.components.SectionCard
+import app.savia.ui.components.dismissKeyboardOnTapOutside
 import app.savia.ui.lock.AppLock
 import app.savia.ui.lock.SaviaLogo
 import app.savia.ui.lock.findFragmentActivity
@@ -129,9 +135,14 @@ private fun openSecuritySettings(context: Context) {
     }
 }
 
-/** Borra todos los datos de salud (tablas hijas antes que padres) y los archivos adjuntos. Conserva los ajustes. */
+/**
+ * Borra todos los datos de salud del PERFIL ACTIVO (tablas hijas antes que padres) y sus archivos
+ * adjuntos. Conserva los ajustes y la identidad del perfil (nombre, si es persona o mascota, especie,
+ * parentesco y color) para que siga siendo reconocible en la lista de perfiles. Los demás perfiles no se tocan.
+ */
 internal suspend fun wipeAllData(context: Context) {
     val db = Savia.db
+    val attachments = Savia.attachmentsDir()
     db.withTransaction {
         db.studies().clearAttachments()
         db.studies().clearResults()
@@ -144,11 +155,23 @@ internal suspend fun wipeAllData(context: Context) {
         db.cycle().clear()
         db.appointments().clear()
         db.selfExams().clear()
-        db.profile().save(Profile())
+        db.vaccinations().clear()
+        val old = db.profile().get() ?: Profile()
+        db.profile().save(Profile(name = old.name, kind = old.kind, species = old.species, relation = old.relation, avatarColor = old.avatarColor))
     }
-    File(context.filesDir, "attachments").deleteRecursively()
+    deleteLooseFiles(attachments)
     File(context.cacheDir, "exports").deleteRecursively()
     ReminderScheduler.rescheduleAll(context)
+}
+
+/**
+ * Borra solo los archivos sueltos de [dir]. La carpeta de adjuntos del perfil 1 contiene las
+ * subcarpetas `p<N>` de los demás perfiles, que NO deben tocarse.
+ */
+internal fun deleteLooseFiles(dir: File) {
+    val entries = dir.listFiles() ?: return
+    for (f in entries) if (f.isFile) f.delete()
+    if (dir.listFiles()?.isEmpty() == true) dir.delete()
 }
 
 @Composable
@@ -161,6 +184,9 @@ fun SettingsScreen(nav: NavController) {
     val appLock by prefs.appLock.flow.collectAsStateWithLifecycle()
     val periodReminder by prefs.periodReminder.flow.collectAsStateWithLifecycle()
     val selfExamReminder by prefs.selfExamReminder.flow.collectAsStateWithLifecycle()
+    val active by Savia.active.collectAsStateWithLifecycle()
+    val profileIds by Savia.profiles.ids.collectAsStateWithLifecycle()
+    val pet = active.isPet
 
     var notifOn by remember { mutableStateOf(notificationsEnabled(context)) }
     var askedPermission by rememberSaveable { mutableStateOf(false) }
@@ -235,6 +261,25 @@ fun SettingsScreen(nav: NavController) {
             Modifier.padding(pad).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            SectionCard(title = "Perfil") {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ProfileAvatar(active, size = 44.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Viendo a ${active.displayName}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        val sub = profileSubtitle(active)
+                        Text(
+                            sub.ifEmpty { if (pet) "Mascota" else "Perfil principal" },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                NavRow(
+                    Icons.Filled.Groups, "Perfiles (familia y mascotas)", { nav.navigate(Routes.PROFILES) },
+                    subtitle = if (profileIds.size <= 1) "Agrega a tu familia y a tus mascotas" else "${profileIds.size} perfiles · cambiar, agregar o eliminar",
+                )
+            }
+
             SectionCard(title = "Apariencia") {
                 SettingHeader(Icons.Filled.Palette, "Tema", "Colores claros, oscuros o los que use tu teléfono.")
                 Spacer(Modifier.height(4.dp))
@@ -245,7 +290,7 @@ fun SettingsScreen(nav: NavController) {
                 )
             }
 
-            SectionCard(title = "Módulos") {
+            if (!pet) SectionCard(title = "Módulos") {
                 SwitchRow(
                     Icons.Filled.WaterDrop, "Ciclo menstrual",
                     "Calendario del periodo, predicciones y estadísticas. Tus registros se conservan aunque lo apagues.",
@@ -302,8 +347,8 @@ fun SettingsScreen(nav: NavController) {
                         TextButton(onClick = { openNotificationSettings(context) }) { Text("Abrir ajustes del sistema") }
                     }
                 }
-                RowDivider()
-                if (cycleEnabled) {
+                if (!pet) RowDivider()
+                if (cycleEnabled && !pet) {
                     SwitchRow(
                         Icons.Filled.WaterDrop, "Aviso antes del periodo",
                         "Un recordatorio unos días antes de la fecha estimada.",
@@ -316,7 +361,7 @@ fun SettingsScreen(nav: NavController) {
                         iconTint = SaviaTheme.colors.period,
                     )
                 }
-                SwitchRow(
+                if (!pet) SwitchRow(
                     Icons.Filled.SelfImprovement, "Recordatorio de autoexploración",
                     "Un aviso mensual para revisarte (mamas, testículos, piel).",
                     checked = selfExamReminder,
@@ -329,11 +374,16 @@ fun SettingsScreen(nav: NavController) {
             }
 
             SectionCard(title = "Datos") {
-                NavRow(Icons.Filled.Person, "Mi ficha", { nav.navigate(Routes.PROFILE) }, subtitle = "Datos personales y de emergencia")
+                NavRow(
+                    if (pet) Icons.Filled.Pets else Icons.Filled.Person,
+                    if (pet || active.id != 1) "Ficha de ${active.displayName}" else "Mi ficha",
+                    { nav.navigate(Routes.PROFILE) },
+                    subtitle = if (pet) "Datos de la mascota y su veterinaria" else "Datos personales y de emergencia",
+                )
                 NavRow(Icons.Filled.IosShare, "Exportar y respaldo", { nav.navigate(Routes.EXPORT) }, subtitle = "Excel, PDF, CSV y copia de seguridad")
                 NavRow(
-                    Icons.Filled.DeleteForever, "Borrar todos los datos", { showDelete1 = true },
-                    subtitle = "Elimina todo lo registrado en este teléfono",
+                    Icons.Filled.DeleteForever, "Borrar los datos de este perfil", { showDelete1 = true },
+                    subtitle = "Elimina todo lo registrado de ${active.displayName}",
                     iconTint = MaterialTheme.colorScheme.error,
                 )
             }
@@ -371,8 +421,9 @@ fun SettingsScreen(nav: NavController) {
 
     if (showDelete1) {
         ConfirmDialog(
-            title = "¿Borrar todos los datos?",
-            text = "Se eliminarán de este teléfono tus síntomas, mediciones, estudios y archivos adjuntos, ciclo, medicamentos, citas, bienestar y tu ficha. " +
+            title = "¿Borrar los datos de ${active.displayName}?",
+            text = "Se eliminará de este teléfono todo lo registrado en el perfil de ${active.displayName}: síntomas, mediciones, vacunas, estudios y archivos adjuntos, " +
+                (if (pet) "" else "ciclo, bienestar, ") + "medicamentos, citas y los datos de su ficha. Se conservan el nombre del perfil y los ajustes; los demás perfiles no se tocan. " +
                 "No se puede deshacer. Si quieres conservarlos, primero haz un respaldo en «Exportar y respaldo».",
             confirmLabel = "Continuar",
             onConfirm = { showDelete1 = false; showDelete2 = true },
@@ -383,19 +434,26 @@ fun SettingsScreen(nav: NavController) {
     if (showDelete2) {
         var typed by remember { mutableStateOf("") }
         val ok = typed.trim().equals(DELETE_WORD, ignoreCase = true)
+        val focus = LocalFocusManager.current
+        val wipeName = active.displayName
         AlertDialog(
             onDismissRequest = { showDelete2 = false },
             icon = { Icon(Icons.Filled.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Confirma el borrado") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Para confirmar que quieres eliminar todo de forma definitiva, escribe $DELETE_WORD.")
+                // El diálogo vive en su propia ventana: aquí se cierra el teclado al tocar fuera del campo.
+                Column(
+                    Modifier.dismissKeyboardOnTapOutside().verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Para confirmar que quieres eliminar de forma definitiva los datos de $wipeName, escribe $DELETE_WORD.")
                     OutlinedTextField(
                         value = typed,
                         onValueChange = { typed = it.take(12) },
                         singleLine = true,
                         placeholder = { Text(DELETE_WORD) },
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { focus.clearFocus() }),
                     )
                 }
             },
@@ -407,12 +465,12 @@ fun SettingsScreen(nav: NavController) {
                         Savia.io {
                             wipeAllData(app)
                             withContext(Dispatchers.Main) {
-                                Toast.makeText(app, "Se borraron todos los datos", Toast.LENGTH_LONG).show()
+                                Toast.makeText(app, "Se borraron los datos de $wipeName", Toast.LENGTH_LONG).show()
                             }
                         }
                     },
                     enabled = ok,
-                ) { Text("Borrar todo", color = if (ok) MaterialTheme.colorScheme.error else Color.Unspecified) }
+                ) { Text("Borrar datos", color = if (ok) MaterialTheme.colorScheme.error else Color.Unspecified) }
             },
             dismissButton = { TextButton(onClick = { showDelete2 = false }) { Text("Cancelar") } },
         )

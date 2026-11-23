@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Accessibility
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Emergency
 import androidx.compose.material.icons.filled.HealthAndSafety
 import androidx.compose.material.icons.filled.IosShare
@@ -42,6 +43,7 @@ import androidx.compose.material.icons.filled.Medication
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.SentimentSatisfied
+import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -69,9 +71,7 @@ import app.savia.Savia
 import app.savia.data.Profile
 import app.savia.data.SexOptions
 import app.savia.ui.components.ChoiceChips
-import app.savia.ui.components.NumberField
 import app.savia.ui.components.OptionalDateField
-import app.savia.ui.components.SaviaTextField
 import app.savia.ui.components.SectionCard
 import app.savia.ui.lock.SaviaLogo
 import app.savia.ui.theme.SaviaTheme
@@ -131,6 +131,8 @@ internal fun OnboardingContent(onDone: () -> Unit, initialStep: Int = 0, initial
                     sex = cleanSex,
                     birthEpochDay = cleanBirth ?: existing.birthEpochDay,
                     heightCm = cleanHeight ?: existing.heightCm,
+                    // El primer perfil es el de quien usa la app; después se pueden agregar familia y mascotas.
+                    relation = existing.relation.ifEmpty { "Yo" },
                 ),
             )
         }
@@ -299,7 +301,8 @@ private fun AboutYouPage(
     PageTitle("Cuéntanos un poco de ti", "Todo es opcional y puedes cambiarlo después en «Mi ficha».")
     SectionCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SaviaTextField(name, onName, "¿Cómo te llamas?", capitalization = KeyboardCapitalization.Words)
+            // "Listo" cierra el teclado: lo que sigue (sexo, fecha) no se escribe, se elige.
+            FormTextField(name, onName, "¿Cómo te llamas?", last = true, capitalization = KeyboardCapitalization.Words)
             Column {
                 Text("Sexo", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ChoiceChips(SexOptions.all, sex, onSex, allowDeselect = true)
@@ -320,8 +323,8 @@ private fun AboutYouPage(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            NumberField(
-                height, onHeight, "Estatura", suffix = "cm",
+            FormNumberField(
+                height, onHeight, "Estatura", last = true, suffix = "cm",
                 isError = heightError,
                 supportingText = if (heightError) "Escribe tu estatura en centímetros (p. ej. 168)" else "Sirve para calcular tu índice de masa corporal",
             )
@@ -362,13 +365,13 @@ private fun ModulesPage(
         if (cycle) {
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                NumberField(
+                FormNumberField(
                     cycleLength, onCycleLength, "Duración del ciclo", Modifier.weight(1f),
                     suffix = "días", decimal = false, isError = cycleLengthError,
                     supportingText = if (cycleLengthError) "Entre 15 y 60" else null,
                 )
-                NumberField(
-                    periodLength, onPeriodLength, "Duración del periodo", Modifier.weight(1f),
+                FormNumberField(
+                    periodLength, onPeriodLength, "Duración del periodo", Modifier.weight(1f), last = true,
                     suffix = "días", decimal = false, isError = periodLengthError,
                     supportingText = if (periodLengthError) "Entre 1 y 14" else null,
                 )
@@ -389,7 +392,14 @@ private fun ModulesPage(
             ModuleChip(Icons.Filled.Medication, "Medicamentos y citas")
             ModuleChip(Icons.Filled.Accessibility, "Atlas del cuerpo")
             ModuleChip(Icons.Filled.SentimentSatisfied, "Bienestar diario")
+            ModuleChip(Icons.Filled.Vaccines, "Vacunas")
         }
+    }
+    SectionCard {
+        FeatureRow(
+            Icons.Filled.Groups, "Para toda tu familia y tus mascotas",
+            "Después podrás agregar perfiles para tus hijas, hijos, tu pareja o tus mascotas, cada uno con su propio historial: en Más → Perfiles o tocando tu nombre en Inicio.",
+        )
     }
 }
 
