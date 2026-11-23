@@ -1,0 +1,86 @@
+/* Atlas corporal (prefijo atlas-). */
+
+.atlas { flex: 1 1 0; min-height: 0; height: 100%; display: flex; flex-direction: column; position: relative; }
+
+/* Selector de vistas: fila desplazable de chips (objetivos de 44px). */
+.atlas-groups {
+  flex: 0 0 auto; display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  padding: 10px calc(var(--safe-right) + 12px) 6px calc(var(--safe-left) + 12px);
+}
+.atlas-groups::-webkit-scrollbar { display: none; }
+.atlas-groups .chip { min-height: 44px; }
+
+.atlas-stage { flex: 1 1 0; min-height: 120px; position: relative; display: flex; }
+
+/* Lienzo: solo aquí se desactivan los gestos del navegador para manejar pellizco y arrastre propios. */
+.atlas-canvas {
+  flex: 1 1 0; min-width: 0; position: relative; overflow: hidden; touch-action: none;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; cursor: pointer;
+}
+.atlas-canvas > svg { position: absolute; inset: 0; }
+.atlas-canvas > svg path { stroke-linejoin: round; }
+
+.atlas-skin { fill: var(--body-fill); stroke: none; }
+.atlas-skin.outline { stroke: var(--body-stroke); stroke-width: 1px; stroke-opacity: 0.7; }
+.atlas-region { stroke: var(--body-stroke); stroke-width: 1px; }
+.atlas-bone { fill: var(--bone); stroke: color-mix(in srgb, var(--bone) 62%, #000); stroke-width: 0.9px; }
+.atlas-bone.on { fill: color-mix(in srgb, var(--primary) 65%, var(--bone)); }
+.atlas-organ { fill: var(--oc); stroke: color-mix(in srgb, var(--oc) 55%, #000); stroke-width: 0.9px; }
+html[data-theme='dark'] .atlas-organ { fill: color-mix(in srgb, var(--oc) 82%, #000); }
+.atlas-organ.dashed { stroke-dasharray: 4 3; }
+.atlas-deco { fill: none; stroke: var(--body-stroke); stroke-width: 1px; }
+.atlas-deco.dashed { stroke-dasharray: 4 4; }
+.atlas-deco.ink { fill: var(--body-stroke); stroke: none; }
+.atlas-text { fill: var(--text); font-weight: 500; font-family: inherit; pointer-events: none; }
+
+/* Contorno de la zona seleccionada (se dibuja al final). */
+.atlas-sel { fill: none; stroke: var(--primary); stroke-width: 2.4px; pointer-events: none; }
+.atlas-sel.organ { stroke: var(--text); stroke-width: 2.6px; }
+.atlas-sel.bone { stroke-width: 2px; }
+
+.atlas-mark { position: absolute; bottom: 6px; font-size: 11.5px; color: var(--muted); pointer-events: none; }
+.atlas-mark.left { left: calc(var(--safe-left) + 12px); }
+.atlas-mark.right { right: calc(var(--safe-right) + 12px); }
+
+/* Botones de zoom: columna +/− abajo a la derecha; "restablecer" aparece a su izquierda cuando hay zoom. */
+.atlas-zoom { position: absolute; right: calc(var(--safe-right) + 10px); bottom: 28px; display: flex; align-items: flex-end; gap: 8px; }
+.atlas-zoom .col { display: flex; flex-direction: column; gap: 8px; }
+.atlas-zoom button {
+  width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+.atlas-zoom button:disabled { opacity: 0.4; }
+.atlas-zoom button:active:not(:disabled) { background: var(--surface-2); }
+
+/* Selector Mujer / Hombre sobre el lienzo (arriba a la izquierda: no choca con los botones de zoom) */
+.atlas-sex { position: absolute; top: 4px; left: calc(var(--safe-left) + 12px); width: 164px; background: var(--bg); border-radius: 23px; }
+.atlas-sex .segmented button { min-height: 44px; font-size: 14.5px; }
+
+/* Panel inferior */
+.atlas-panel {
+  flex: 0 0 auto; max-height: 45%; display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); border-top: 1px solid var(--line); border-radius: 22px 22px 0 0;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.07);
+}
+.atlas-panel-scroll {
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; min-height: 0;
+  padding: 8px calc(var(--safe-right) + 10px) 14px calc(var(--safe-left) + 18px);
+}
+.atlas-hint { display: flex; align-items: center; gap: 12px; padding: 10px calc(var(--safe-right) + 16px) 10px calc(var(--safe-left) + 16px); }
+.atlas-hint .ic { color: var(--primary); flex: 0 0 auto; }
+.atlas-hint .t { font-weight: 600; font-size: 15px; line-height: 1.25; }
+.atlas-hint .n { font-size: 12.5px; line-height: 1.3; color: var(--muted); margin-top: 2px; }
+/* Sin barra de pestañas (pantalla secundaria): respeta la zona segura inferior del iPhone. */
+.page.no-tabs .atlas-panel-scroll { padding-bottom: calc(var(--safe-bottom) + 14px); }
+.page.no-tabs .atlas-hint { padding-bottom: calc(var(--safe-bottom) + 10px); }
+
+.atlas-panel-head { display: flex; align-items: center; gap: 4px; }
+.atlas-panel-head h2 { flex: 1 1 0; min-width: 0; font-size: 21px; font-weight: 700; line-height: 1.2; }
+.atlas-panel-body { display: flex; flex-direction: column; gap: 9px; padding-right: 8px; }
+.atlas-line .l { font-size: 13px; font-weight: 700; color: var(--primary); }
+.atlas-line .v { color: var(--muted); font-size: 15px; }
+.atlas-here { font-size: 13.5px; font-weight: 600; color: var(--bad); }
+.atlas-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.atlas-foot { font-size: 12px; color: var(--muted); }
+
+.atlas-center { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
