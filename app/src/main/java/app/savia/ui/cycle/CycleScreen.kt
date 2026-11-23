@@ -329,7 +329,14 @@ private fun QuickActionsCard(state: CycleUiState, context: Context, onLogToday: 
         OutlinedButton(onClick = onLogToday, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Registrar hoy (síntomas, ánimo y más)")
+            Text("Registrar hoy (síntomas, pruebas y más)")
+        }
+        if (state.analysis.lateDays >= 3 && (rec?.pregnancyTest ?: 0) == 0) {
+            Text(
+                "Tu periodo lleva ${state.analysis.lateDays} días de retraso. Si te haces una prueba de embarazo, puedes anotarla en el registro de hoy.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -484,6 +491,7 @@ private fun DayCell(
     val onPeriod = onPeriodColor()
     val onSurface = MaterialTheme.colorScheme.onSurface
     val dotNeutral = MaterialTheme.colorScheme.onSurfaceVariant
+    val testColor = MaterialTheme.colorScheme.tertiary
     val flow = rec?.flow ?: 0
     val extras = rec != null && CycleLogic.hasExtras(rec)
 
@@ -539,6 +547,15 @@ private fun DayCell(
                         Offset(c.x, c.y + 12.dp.toPx()),
                     )
                 }
+                // Prueba de embarazo registrada ese día: rombo pequeño arriba a la derecha.
+                if ((rec?.pregnancyTest ?: 0) != 0) {
+                    val m = Offset(c.x + r * 0.72f, c.y - r * 0.72f)
+                    val k = 3.6.dp.toPx()
+                    val diamond = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(m.x, m.y - k); lineTo(m.x + k, m.y); lineTo(m.x, m.y + k); lineTo(m.x - k, m.y); close()
+                    }
+                    drawPath(diamond, testColor.copy(alpha = alpha))
+                }
             },
         contentAlignment = Alignment.Center,
     ) {
@@ -554,6 +571,7 @@ private fun DayCell(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Legend(showFert: Boolean) {
+    val testColor = MaterialTheme.colorScheme.tertiary
     val colors = SaviaTheme.colors
     val onSurface = MaterialTheme.colorScheme.onSurface
     val neutral = MaterialTheme.colorScheme.onSurfaceVariant
@@ -574,6 +592,14 @@ private fun Legend(showFert: Boolean) {
         }
         LegendItem("Hoy") { drawCircle(onSurface, size.minDimension / 2f - 1.dp.toPx(), style = Stroke(1.8.dp.toPx())) }
         LegendItem("Con notas") { drawCircle(neutral, 2.5.dp.toPx()) }
+        LegendItem("Prueba de embarazo") {
+            val k = size.minDimension * 0.32f
+            val m = center
+            drawPath(
+                androidx.compose.ui.graphics.Path().apply { moveTo(m.x, m.y - k); lineTo(m.x + k, m.y); lineTo(m.x, m.y + k); lineTo(m.x - k, m.y); close() },
+                testColor,
+            )
+        }
     }
 }
 

@@ -199,9 +199,6 @@ fun CycleDayScreen(nav: NavController, epochDay: Long) {
                     temp, { temp = it }, "Temperatura basal", suffix = "°C", isError = tempError,
                     supportingText = if (tempError) "Escribe un valor entre 35 y 39 °C" else "Tómala al despertar, antes de levantarte",
                 )
-                Spacer(Modifier.height(6.dp))
-                Label("Prueba de ovulación")
-                ChoiceChips(CycleCatalog.tests, ovTest.takeIf { it > 0 }, { ovTest = it ?: 0 }, allowDeselect = true)
             }
 
             SectionCard(title = "Vida sexual y anticoncepción") {
@@ -219,7 +216,16 @@ fun CycleDayScreen(nav: NavController, epochDay: Long) {
                     }
                     Switch(checked = contraceptive, onCheckedChange = { contraceptive = it })
                 }
-                Spacer(Modifier.height(6.dp))
+            }
+
+            // Las pruebas tienen su propia tarjeta para que sean fáciles de encontrar.
+            SectionCard(title = "Pruebas") {
+                Text(
+                    "Si hoy te hiciste una prueba, anota aquí el resultado. Queda guardada en tu historial.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
                 Label("Prueba de embarazo")
                 ChoiceChips(CycleCatalog.tests, pregTest.takeIf { it > 0 }, { pregTest = it ?: 0 }, allowDeselect = true)
                 if (pregTest == 2) {
@@ -229,6 +235,9 @@ fun CycleDayScreen(nav: NavController, epochDay: Long) {
                             "profesional de la salud, quien además puede orientarte sobre los siguientes pasos.",
                     )
                 }
+                Spacer(Modifier.height(10.dp))
+                Label("Prueba de ovulación")
+                ChoiceChips(CycleCatalog.tests, ovTest.takeIf { it > 0 }, { ovTest = it ?: 0 }, allowDeselect = true)
             }
 
             SectionCard(title = "Notas") {

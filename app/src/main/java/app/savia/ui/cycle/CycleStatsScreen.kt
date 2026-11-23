@@ -1,5 +1,10 @@
 package app.savia.ui.cycle
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import java.time.LocalDate
+import app.savia.data.CycleCatalog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -79,6 +84,33 @@ fun CycleStatsScreen(nav: NavController) {
             SummaryCard(a)
             LengthsCard(a)
             HistoryCard(a)
+            val tests = remember(state.days) { state.days.filter { it.pregnancyTest != 0 }.sortedByDescending { it.epochDay } }
+            if (tests.isNotEmpty()) {
+                SectionCard(title = "Pruebas de embarazo") {
+                    for (d in tests.take(24)) {
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { nav.navigate(Routes.cycleDay(d.epochDay)) }.padding(vertical = 7.dp, horizontal = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(Fmt.dateWeekday(d.epochDay) + " " + LocalDate.ofEpochDay(d.epochDay).year, style = MaterialTheme.typography.bodyLarge)
+                                val cd = a.info(d.epochDay).cycleDay
+                                Text(
+                                    listOfNotNull(cd?.let { "Día $it del ciclo" }, Fmt.daysFromNow(d.epochDay)).joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Pill(
+                                CycleCatalog.testLabel(d.pregnancyTest),
+                                if (d.pregnancyTest == 2) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outline,
+                            )
+                        }
+                    }
+                    if (tests.size > 24) {
+                        Text("Se muestran las 24 más recientes de ${tests.size}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
             if (symptomStats.isNotEmpty()) FrequencyCard("Síntomas más frecuentes", symptomStats, SaviaTheme.colors.period)
             if (moodStats.isNotEmpty()) FrequencyCard("Ánimo más frecuente", moodStats, MaterialTheme.colorScheme.primary)
             if (temps.size >= 2) {

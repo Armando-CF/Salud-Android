@@ -85,6 +85,7 @@ import app.savia.ui.components.SectionCard
 import app.savia.ui.components.Sparkline
 import app.savia.ui.cycle.CycleSummaryCard
 import app.savia.ui.cycle.rememberCycleState
+import app.savia.ui.measure.MeasureRefs
 import app.savia.ui.measure.MeasureStats
 import app.savia.ui.meds.MedActions
 import app.savia.ui.meds.dosesForDay
@@ -376,11 +377,7 @@ fun HomeScreen(nav: NavController) {
 }
 
 /** Peso para tarjetas: en mascotas pequeñas se muestra en gramos. */
-internal fun weightText(kg: Double, isPet: Boolean): String = when {
-    isPet && kg < 1.0 -> "${Fmt.num(kg * 1000, 0)} g"
-    isPet -> "${Fmt.num(kg, 2)} kg"
-    else -> "${Fmt.num(kg, 1)} kg"
-}
+internal fun weightText(kg: Double, isPet: Boolean): String = MeasureRefs.weightText(kg, isPet)
 
 /** Lo pendiente HOY de otro perfil, para avisarlo en la pantalla de inicio del perfil activo. */
 internal data class OtherProfileStatus(val info: ProfileInfo, val notes: List<String>, val urgent: Boolean)
