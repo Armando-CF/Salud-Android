@@ -13,6 +13,8 @@ import type { DailyLog, Profile, ProfileInfo } from '../../data/types'
 import { Fmt, millisToEpochDay, nowMillis, today } from '../../lib/dates'
 import { isIos, isStandalone } from '../../lib/files'
 import { Avatar, Card, IconButton, NavRow, Page, PawIcon, Sparkline, intensityColor } from '../../ui'
+import { CycleSummaryCard } from '../cycle'
+import { weightSummary, weightText as measureWeightText } from '../measure'
 import './home.css'
 
 export const MOOD_ICONS: LucideIcon[] = [Angry, Frown, Meh, Smile, Laugh]
@@ -29,10 +31,7 @@ function Badge(props: { icon: ReactNode; color: string }) {
 }
 
 /** Peso para tarjetas: en mascotas pequeñas se muestra en gramos. */
-export function weightText(kg: number, pet: boolean): string {
-  if (pet && kg < 1) return `${Fmt.num(kg * 1000, 0)} g`
-  return `${Fmt.num(kg, pet ? 2 : 1)} kg`
-}
+export const weightText = (kg: number, pet: boolean): string => measureWeightText(kg, pet)
 
 /** Lo pendiente HOY de otro perfil (se completa al integrar los módulos de medicamentos y vacunas). */
 export interface OtherStatus { info: ProfileInfo; notes: string[]; urgent: boolean }
@@ -71,8 +70,7 @@ export function HomePage() {
   const self = !isPet && info.id === 1
   const title = self ? (name ? `Hola, ${name.split(' ')[0]}` : 'Hola') : displayName(info)
   const subtitle = [self ? '' : profileSubtitle(info), Fmt.dateLong(t)].filter(Boolean).join(' · ')
-  const latest = weights.length ? weights[weights.length - 1] : null
-  const ref30 = latest ? [...weights].reverse().find((w) => millisToEpochDay(w.timestamp) <= millisToEpochDay(latest.timestamp) - 25) : null
+  const ws = weightSummary(weights, isPet ? null : profile?.heightCm ?? null, profile?.goalWeightKg ?? null)
   const empty = counts === 0 && appts.length === 0
   const backupDue = (counts ?? 0) > 0 && (lastBackup === 0 || nowMillis() - lastBackup > 30 * 86_400_000)
 
@@ -129,7 +127,7 @@ export function HomePage() {
         </Card>
       )}
 
-      {cycleEnabled && !isPet && homeParts.cycleCard?.()}
+      {cycleEnabled && !isPet && <CycleSummaryCard />}
 
       {!isPet && (
         <Card
@@ -167,17 +165,20 @@ export function HomePage() {
 
       {homeParts.vaccineCards?.()}
 
-      {latest && (
+      {ws && (
         <Card onClick={() => nav('/mediciones/weight')}>
           <div className="row">
             <div className="grow">
               <div className="home-kicker" style={{ color: 'var(--primary)' }}>Peso</div>
-              <div style={{ fontSize: 25, fontWeight: 700 }}>{weightText(latest.value, isPet)}</div>
+              <div style={{ fontSize: 25, fontWeight: 700 }}>{weightText(ws.latest, isPet)}</div>
               <div className="small muted">
-                {ref30 && ref30.id !== latest.id ? `${Fmt.signed(latest.value - ref30.value, isPet ? 2 : 1)} kg en 30 días` : Fmt.relativeDay(millisToEpochDay(latest.timestamp))}
+                {[
+                  ws.change30 !== null ? `${Fmt.signed(ws.change30, isPet ? 2 : 1)} kg en 30 días` : '',
+                  !isPet && ws.bmi !== null ? `IMC ${Fmt.num(ws.bmi, 1)}` : '',
+                ].filter(Boolean).join(' · ') || Fmt.relativeDay(millisToEpochDay(ws.latestTimestamp))}
               </div>
             </div>
-            <Sparkline values={weights.slice(-20).map((w) => w.value)} />
+            <Sparkline values={ws.spark} />
           </div>
         </Card>
       )}
