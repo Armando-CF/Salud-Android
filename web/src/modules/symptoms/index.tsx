@@ -1,12 +1,6 @@
-import { Page } from '../../ui'
-
-/** Lista e historial de síntomas (pestaña). */
-export function SymptomsPage() {
-  return <Page title="Síntomas"><p className="muted">Pendiente</p></Page>
-}
-
-/** Alta/edición. Rutas: /sintomas/nuevo (admite ?region=&label=&name=) y /sintomas/:id. */
-export function SymptomEditPage() {
-  return <Page title="Síntoma"><p className="muted">Pendiente</p></Page>
-}
-
+// Módulo de síntomas: historial, resumen y editor.
+export { SymptomsPage, SymptomListItem, IntensityBadge } from './SymptomsPage'
+export { SymptomEditPage } from './SymptomEditPage'
+export { SymptomStats, type SymptomSummary } from './stats'
+export { symptomKit, useSymptomKit, type SymptomKit } from './kit'
+export { PetSymptomCatalog } from './petCatalog'
