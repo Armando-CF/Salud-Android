@@ -1,22 +1,25 @@
-import { Page } from '../../ui'
+// Medicamentos y citas. Las pantallas se registran en App.tsx; lo demás es API para otros módulos (p. ej. Inicio).
+export { MedsPage, appointmentTitle } from './MedsPage'
+export { MedEditPage } from './MedEditPage'
+export { AppointmentsPage, AppointmentEditPage } from './AppointmentsPages'
 
-/** Tomas del día y medicamentos. */
-export function MedsPage() {
-  return <Page title="Medicamentos"><p className="muted">Pendiente</p></Page>
-}
+// Lógica pura de horarios
+export {
+  TAKEN, SKIPPED, ALL_DAYS, dosesForDay, slotsOf, parseTimes, joinTimes, isAsNeeded, isScheduledOn, isFinished, dayInMask, weekdayIndex,
+  adherence, recentAdherence, nextDose, daysSummary, scheduleSummary,
+  type DoseItem, type Adherence,
+} from './schedule'
 
-/** Rutas /medicamentos/nuevo y /medicamentos/:id */
-export function MedEditPage() {
-  return <Page title="Medicamento"><p className="muted">Pendiente</p></Page>
-}
+// Acciones sobre tomas
+export { setDose, takeDose, skipDose, undoDose, logDoseNow, deleteIntake, deleteMedication } from './actions'
 
-/** Citas médicas. */
-export function AppointmentsPage() {
-  return <Page title="Citas"><p className="muted">Pendiente</p></Page>
-}
+// Componentes y utilidades reutilizables
+export { DoseRow, AdherencePill, CalendarButton, CalendarNote, useAddToCalendar, useCalendarOwner, useNow } from './common'
 
-/** Rutas /citas/nueva y /citas/:id */
-export function AppointmentEditPage() {
-  return <Page title="Cita"><p className="muted">Pendiente</p></Page>
-}
+// Calendario (.ics)
+export {
+  buildIcs, appointmentEvent, vaccinationEvent, medicationEvents, icsEscape, icsFold, icsDate, icsLocalDateTime, icsUtcStamp, vaccineNoun,
+  type IcsEvent, type IcsAlarm,
+} from './ics'
 
+export { medsText, CALENDAR_NOTE, type MedsText } from './text'
