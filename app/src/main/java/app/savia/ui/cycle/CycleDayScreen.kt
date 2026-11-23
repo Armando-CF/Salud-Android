@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +32,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import app.savia.Savia
+import app.savia.ui.measure.DoneNumberField
+import app.savia.ui.wellbeing.PeopleOnlyScreen
 import app.savia.data.CycleCatalog
 import app.savia.data.CycleDay
 import app.savia.reminders.ReminderScheduler
@@ -40,7 +41,6 @@ import app.savia.ui.components.ChoiceChips
 import app.savia.ui.components.ConfirmDialog
 import app.savia.ui.components.InfoNote
 import app.savia.ui.components.MultiChoiceChips
-import app.savia.ui.components.NumberField
 import app.savia.ui.components.Pill
 import app.savia.ui.components.SaviaScaffold
 import app.savia.ui.components.SaviaTextField
@@ -53,6 +53,10 @@ import app.savia.util.today
 
 @Composable
 fun CycleDayScreen(nav: NavController, epochDay: Long) {
+    if (Savia.isPet) {
+        PeopleOnlyScreen("Ciclo menstrual") { nav.back() }
+        return
+    }
     val context = LocalContext.current
     val state = rememberCycleState()
     val isFuture = epochDay > today()
@@ -128,8 +132,9 @@ fun CycleDayScreen(nav: NavController, epochDay: Long) {
         },
     ) { pad ->
         if (!loaded) return@SaviaScaffold
+        // SaviaScaffold ya ajusta el contenido a la altura del teclado.
         Column(
-            Modifier.padding(pad).imePadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Contexto del día dentro del ciclo
@@ -189,7 +194,8 @@ fun CycleDayScreen(nav: NavController, epochDay: Long) {
                 Label("Flujo cervical")
                 ChoiceChips(CycleCatalog.mucus, mucus.takeIf { it.isNotEmpty() }, { mucus = it ?: "" }, allowDeselect = true)
                 Spacer(Modifier.height(6.dp))
-                NumberField(
+                // "Listo" en el teclado lo cierra: lo que sigue son chips, no otro campo de texto.
+                DoneNumberField(
                     temp, { temp = it }, "Temperatura basal", suffix = "°C", isError = tempError,
                     supportingText = if (tempError) "Escribe un valor entre 35 y 39 °C" else "Tómala al despertar, antes de levantarte",
                 )

@@ -64,6 +64,7 @@ import app.savia.ui.components.InfoNote
 import app.savia.ui.components.Pill
 import app.savia.ui.components.SaviaScaffold
 import app.savia.ui.components.SaviaTextField
+import app.savia.ui.components.dismissKeyboardOnTapOutside
 import app.savia.ui.components.SectionCard
 import app.savia.ui.components.SectionLabel
 import app.savia.ui.nav.back
@@ -148,6 +149,10 @@ object SelfExamGuides {
 
 @Composable
 fun SelfExamScreen(nav: NavController) {
+    if (Savia.isPet) {
+        PeopleOnlyScreen("Autoexploración") { nav.back() }
+        return
+    }
     val dao = Savia.db.selfExams()
     val context = LocalContext.current
     val exams by remember { dao.observeAll() }.collectAsStateWithLifecycle(initialValue = null)
@@ -393,7 +398,11 @@ private fun SelfExamDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial.id == 0L) "Registrar autoexploración" else "Editar registro") },
         text = {
-            SelfExamForm(exam, types, onChange = { exam = it }, modifier = Modifier.verticalScroll(rememberScrollState()))
+            // El diálogo es otra ventana: tocar un chip o un espacio vacío cierra el teclado de las notas.
+            SelfExamForm(
+                exam, types, onChange = { exam = it },
+                modifier = Modifier.dismissKeyboardOnTapOutside().verticalScroll(rememberScrollState()),
+            )
         },
         confirmButton = {
             TextButton(onClick = { onSave(exam.copy(epochDay = exam.epochDay.coerceAtMost(today()), notes = exam.notes.trim())) }) { Text("Guardar") }

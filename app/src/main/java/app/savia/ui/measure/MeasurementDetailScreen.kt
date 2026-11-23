@@ -48,6 +48,8 @@ import androidx.navigation.NavController
 import app.savia.Savia
 import app.savia.data.MeasureType
 import app.savia.data.Measurement
+import app.savia.data.Profile
+import app.savia.data.SaviaDb
 import app.savia.ui.components.ChartBand
 import app.savia.ui.components.ChartHLine
 import app.savia.ui.components.ChartLegend
@@ -64,10 +66,12 @@ import app.savia.ui.components.SaviaScaffold
 import app.savia.ui.components.SectionCard
 import app.savia.ui.components.SectionLabel
 import app.savia.ui.components.StatTile
+import app.savia.ui.components.dismissKeyboardOnTapOutside
 import app.savia.ui.nav.back
 import app.savia.ui.theme.SaviaTheme
 import app.savia.util.Fmt
 import app.savia.util.millisToEpochDay
+import app.savia.util.nowMillis
 import app.savia.util.today
 import kotlinx.coroutines.flow.Flow
 import kotlin.math.abs
@@ -83,6 +87,8 @@ fun MeasurementDetailScreen(nav: NavController, typeKey: String, openAdd: Boolea
     val profile by remember { Savia.db.profile().observe() }.collectAsStateWithLifecycle(initialValue = null)
     val heightCm = profile?.heightCm
     val goal = profile?.goalWeightKg
+    val who = rememberMeasureWho(profile)
+    val pet = who.isPet
 
     var range by rememberSaveable { mutableStateOf(ChartRange.M3) }
     var formOpen by rememberSaveable { mutableStateOf(false) }
@@ -137,17 +143,25 @@ fun MeasurementDetailScreen(nav: NavController, typeKey: String, openAdd: Boolea
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    item(key = "chart") { ChartCard(type, asc, inRange, range, { range = it }, goal) }
-                    item(key = "stats") { StatsSection(type, asc.last(), inRange, range, heightCm, goal) }
+                    item(key = "chart") { ChartCard(type, asc, inRange, range, { range = it }, goal, who) }
+                    item(key = "stats") { StatsSection(type, asc.last(), inRange, range, heightCm, goal, who) }
                     if (type == MeasureType.WEIGHT) {
-                        item(key = "goal") { GoalCard(asc, goal, onEdit = { goalDialog = true }) }
-                        item(key = "bmi") { BmiCard(asc.last(), heightCm, onEditHeight = { heightDialog = true }) }
+                        item(key = "goal") { GoalCard(asc, goal, who, onEdit = { goalDialog = true }) }
+                        if (pet) {
+                            // Las mascotas no llevan IMC: solo una nota propia de la especie, si la hay.
+                            MeasureRefs.note(who, type)?.let { note -> item(key = "note") { ReferenceNoteCard(note) } }
+                        } else {
+                            item(key = "bmi") { BmiCard(asc.last(), heightCm, who, onEditHeight = { heightDialog = true }) }
+                        }
                     } else {
                         val last = asc.last()
-                        val a = MeasureStats.assess(type, last, heightCm)
+                        val a = MeasureRefs.assess(who, type, last, heightCm)
+                        val note = MeasureRefs.note(who, type)
                         if (a != null) {
-                            item(key = "assessment") { AssessmentCard(type, last, a) }
-                        } else if (type == MeasureType.WAIST && heightCm == null) {
+                            item(key = "assessment") { AssessmentCard(type, last, a, who) }
+                        } else if (note != null) {
+                            item(key = "note") { ReferenceNoteCard(note) }
+                        } else if (type == MeasureType.WAIST && heightCm == null && who.isAdult) {
                             item(key = "assessment") {
                                 SectionCard(title = "Referencia") {
                                     Text(
@@ -167,8 +181,9 @@ fun MeasurementDetailScreen(nav: NavController, typeKey: String, openAdd: Boolea
                         HistoryRow(
                             type = type,
                             m = m,
-                            assessment = if (type == MeasureType.WEIGHT) null else MeasureStats.assess(type, m, heightCm),
+                            assessment = if (type == MeasureType.WEIGHT) null else MeasureRefs.assess(who, type, m, heightCm),
                             delta = if (type.secondLabel == null) deltas[m.id] else null,
+                            isPet = pet,
                             onClick = { editingId = m.id; formOpen = true },
                         )
                     }
@@ -185,14 +200,18 @@ fun MeasurementDetailScreen(nav: NavController, typeKey: String, openAdd: Boolea
                 type = type,
                 initial = initial,
                 onSave = { m ->
+                    val db = Savia.db
                     Savia.io {
-                        if (m.id == 0L) Savia.db.measurements().insert(m) else Savia.db.measurements().update(m)
+                        if (m.id == 0L) db.measurements().insert(m) else db.measurements().update(m)
+                        if (type == MeasureType.HEIGHT) syncProfileHeight(db)
                     }
                     formOpen = false
                 },
                 onCancel = { formOpen = false },
                 onDelete = { deleteTarget = initial },
-                modifier = Modifier.verticalScroll(rememberScrollState()).imePadding(),
+                // La hoja vive en su propia ventana: aquí se cierra el teclado al tocar fuera de un campo
+                // y el contenido se encoge y se desplaza cuando el teclado está abierto.
+                modifier = Modifier.dismissKeyboardOnTapOutside().imePadding().verticalScroll(rememberScrollState()),
             )
         }
     }
@@ -202,7 +221,11 @@ fun MeasurementDetailScreen(nav: NavController, typeKey: String, openAdd: Boolea
             title = "Eliminar medición",
             text = "Se eliminará ${type.valueWithUnit(target)} del ${Fmt.dateTime(target.timestamp)}. Esta acción no se puede deshacer.",
             onConfirm = {
-                Savia.io { Savia.db.measurements().delete(target) }
+                val db = Savia.db
+                Savia.io {
+                    db.measurements().delete(target)
+                    if (type == MeasureType.HEIGHT) syncProfileHeight(db)
+                }
                 deleteTarget = null
                 formOpen = false
             },
@@ -216,9 +239,11 @@ fun MeasurementDetailScreen(nav: NavController, typeKey: String, openAdd: Boolea
             label = "Meta",
             unit = "kg",
             initial = goal,
-            min = 20.0,
+            min = if (pet) 0.01 else 20.0,
             max = 400.0,
-            text = "Elige un peso objetivo realista; si tienes dudas, platícalo con un profesional de la salud.",
+            decimals = if (pet) 3 else 1,
+            text = if (pet) "Si tu veterinario te indicó un peso ideal, anótalo aquí como meta (en kilogramos; 0.35 kg son 350 g)."
+            else "Elige un peso objetivo realista; si tienes dudas, platícalo con un profesional de la salud.",
             onSave = { v -> updateProfile { it.copy(goalWeightKg = v) }; goalDialog = false },
             onDismiss = { goalDialog = false },
             clearLabel = "Quitar meta",
@@ -227,16 +252,38 @@ fun MeasurementDetailScreen(nav: NavController, typeKey: String, openAdd: Boolea
     }
     if (heightDialog) {
         NumberDialog(
-            title = "Tu estatura",
+            title = "Estatura",
             label = "Estatura",
             unit = "cm",
             initial = heightCm,
-            min = 50.0,
+            min = 30.0,
             max = 250.0,
-            text = "Se guarda en tu ficha y se usa para calcular el IMC.",
-            onSave = { v -> updateProfile { it.copy(heightCm = v) }; heightDialog = false },
+            text = "Se guarda en la ficha y en el historial de estatura, y se usa para calcular el IMC.",
+            onSave = { v ->
+                val db = Savia.db
+                Savia.io { recordHeight(db, v) }
+                heightDialog = false
+            },
             onDismiss = { heightDialog = false },
         )
+    }
+}
+
+/** Deja `Profile.heightCm` igual a la estatura más reciente del historial (si hay alguna). */
+internal suspend fun syncProfileHeight(db: SaviaDb) {
+    val latest = db.measurements().getAll().filter { it.type == MeasureType.HEIGHT.key }.maxByOrNull { it.timestamp } ?: return
+    val dao = db.profile()
+    val p = dao.get() ?: Profile()
+    if (p.heightCm != latest.value) dao.save(p.copy(heightCm = latest.value))
+}
+
+/** Guarda la estatura en la ficha y, si cambió respecto a la última registrada, también en el historial. */
+internal suspend fun recordHeight(db: SaviaDb, heightCm: Double, now: Long = nowMillis()) {
+    val dao = db.profile()
+    dao.save((dao.get() ?: Profile()).copy(heightCm = heightCm))
+    val last = db.measurements().getAll().filter { it.type == MeasureType.HEIGHT.key }.maxByOrNull { it.timestamp }
+    if (last == null || abs(last.value - heightCm) > 0.05) {
+        db.measurements().insert(Measurement(timestamp = now, type = MeasureType.HEIGHT.key, value = heightCm))
     }
 }
 
@@ -257,6 +304,7 @@ private fun ChartCard(
     range: ChartRange,
     onRange: (ChartRange) -> Unit,
     goal: Double?,
+    who: MeasureWho,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val outline = MaterialTheme.colorScheme.outline
@@ -282,14 +330,25 @@ private fun ChartCard(
         val hLines = ArrayList<ChartHLine>()
         val legend = ArrayList<Pair<String, Color>>()
         val firstX = MeasureStats.dayX(inRange.first().timestamp)
+        // Mascotas de menos de 1 kg: la gráfica de peso se muestra en gramos (los datos siguen en kg).
+        val grams = type == MeasureType.WEIGHT && who.isPet &&
+            inRange.all { MeasureRefs.inGrams(it.value, true) } && (goal == null || MeasureRefs.inGrams(goal, true))
+        val scale = if (grams) 1000.0 else 1.0
+        val chartUnit = if (grams) "g" else type.unit
+        val yDecimals = when {
+            grams -> 0
+            type == MeasureType.WEIGHT && who.isPet -> 2
+            else -> 1
+        }
+        fun List<TPoint>.scaled(): List<TPoint> = if (scale == 1.0) this else map { TPoint(it.x, it.y * scale) }
 
         when (type) {
             MeasureType.WEIGHT -> {
-                val pts = MeasureStats.points(inRange)
+                val pts = MeasureStats.points(inRange).scaled()
                 series += ChartSeries("Peso", pts.toChart(), primary, fill = true)
                 legend += "Peso" to primary
                 if (pts.size >= 5) {
-                    val ma = remember(asc, firstX) { MeasureStats.movingAverage(MeasureStats.points(asc)).filter { it.x >= firstX } }
+                    val ma = remember(asc, firstX, scale) { MeasureStats.movingAverage(MeasureStats.points(asc)).filter { it.x >= firstX }.scaled() }
                     series += ChartSeries("Media 7 días", ma.toChart(), colors.chart[3], dots = false, strokeWidth = 2f, selectable = false)
                     legend += "Media móvil 7 días" to colors.chart[3]
                 }
@@ -304,7 +363,7 @@ private fun ChartCard(
                     legend += "Tendencia" to outline
                 }
                 if (goal != null) {
-                    hLines += ChartHLine(goal, colors.good, "Meta ${Fmt.num(goal, 1)}")
+                    hLines += ChartHLine(goal * scale, colors.good, "Meta ${Fmt.num(goal * scale, yDecimals)}")
                     legend += "Meta" to colors.good
                 }
             }
@@ -313,17 +372,20 @@ private fun ChartCard(
                 val diaColor = colors.chart[2]
                 series += ChartSeries("Sistólica", MeasureStats.points(inRange).toChart(), sysColor)
                 series += ChartSeries("Diastólica", MeasureStats.points(inRange, second = true).toChart(), diaColor)
-                bands += ChartBand(90.0, 120.0, sysColor.copy(alpha = bandAlpha))
-                bands += ChartBand(60.0, 80.0, diaColor.copy(alpha = bandAlpha))
+                if (who.isAdult) {
+                    bands += ChartBand(90.0, 120.0, sysColor.copy(alpha = bandAlpha))
+                    bands += ChartBand(60.0, 80.0, diaColor.copy(alpha = bandAlpha))
+                }
                 legend += "Sistólica (alta)" to sysColor
                 legend += "Diastólica (baja)" to diaColor
             }
             else -> {
-                series += ChartSeries(type.label, MeasureStats.points(inRange).toChart(), primary, fill = bandFor(type, inRange) == null)
-                bandFor(type, inRange)?.let { (lo, hi) ->
+                val band = MeasureRefs.band(who, type, inRange)
+                series += ChartSeries(type.label, MeasureStats.points(inRange).toChart(), primary, fill = band == null)
+                band?.let { (lo, hi) ->
                     bands += ChartBand(lo, hi, colors.good.copy(alpha = bandAlpha))
                     legend += type.label to primary
-                    legend += "Rango de referencia" to colors.good
+                    legend += (if (who.isPet) "Rango habitual (orientativo)" else "Rango de referencia") to colors.good
                 }
             }
         }
@@ -331,14 +393,14 @@ private fun ChartCard(
             series = series,
             bands = bands,
             hLines = hLines,
-            yFormatter = { Fmt.num(it, 1) },
-            unit = type.unit,
+            yFormatter = { Fmt.num(it, yDecimals) },
+            unit = chartUnit,
         )
         if (legend.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
             ChartLegend(legend)
         }
-        if (type == MeasureType.BLOOD_PRESSURE) {
+        if (type == MeasureType.BLOOD_PRESSURE && who.isAdult) {
             Spacer(Modifier.height(4.dp))
             Text(
                 "Las franjas marcan el rango de referencia de cada valor (90–120 y 60–80 mmHg).",
@@ -355,16 +417,11 @@ private fun ChartCard(
     }
 }
 
-/** Rango de referencia orientativo para sombrear en la gráfica (o null si no aplica). */
-private fun bandFor(type: MeasureType, inRange: List<Measurement>): Pair<Double, Double>? = when (type) {
-    MeasureType.GLUCOSE -> {
-        val fasting = inRange.count { it.tag.contains("ayunas", true) || it.tag.contains("antes de comer", true) }
-        if (fasting * 2 >= inRange.size) 70.0 to 99.0 else 70.0 to 139.0
-    }
-    MeasureType.HEART_RATE -> 60.0 to 100.0
-    MeasureType.SPO2 -> 95.0 to 100.0
-    MeasureType.TEMPERATURE -> 36.0 to 37.4
-    else -> null
+/** "66.2–68.7" + unidad; el peso de mascotas va en gramos si todo el rango es menor a 1 kg. */
+private fun rangeText(type: MeasureType, min: Double, max: Double, isPet: Boolean): Pair<String, String> = when {
+    type == MeasureType.WEIGHT && isPet && MeasureRefs.inGrams(max, true) -> minMax(min * 1000, max * 1000, 0) to "g"
+    type == MeasureType.WEIGHT && isPet -> minMax(min, max, 2) to "kg"
+    else -> minMax(min, max, type.decimals) to type.unit
 }
 
 @Composable
@@ -375,8 +432,10 @@ private fun StatsSection(
     range: ChartRange,
     heightCm: Double?,
     goal: Double?,
+    who: MeasureWho,
 ) {
     val d = type.decimals
+    val pet = who.isPet
     val rangeText = if (range == ChartRange.ALL) "todo el historial" else "últimos ${range.label}"
     val s1 = remember(inRange) { MeasureStats.summary(inRange.map { it.value }) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -396,47 +455,69 @@ private fun StatsSection(
             }
         } else {
             val change = s1?.takeIf { it.count >= 2 }?.change
+            val flat = if (pet) 0.0005 else 0.05
             val changeColor = when {
-                type != MeasureType.WEIGHT || goal == null || change == null || s1 == null || abs(change) < 0.05 -> MaterialTheme.colorScheme.onSurface
+                type != MeasureType.WEIGHT || goal == null || change == null || s1 == null || abs(change) < flat -> MaterialTheme.colorScheme.onSurface
                 sign(goal - s1.first) == sign(change) -> SaviaTheme.colors.good
                 else -> SaviaTheme.colors.warn
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatTile(if (type == MeasureType.WEIGHT) "Actual" else "Última", "${Fmt.num(latest.value, d)} ${type.unit}", Modifier.weight(1f), sub = Fmt.relativeDay(latest.timestamp.millisToEpochDay()))
+                StatTile(if (type == MeasureType.WEIGHT) "Actual" else "Última", type.amount(latest.value, pet), Modifier.weight(1f), sub = Fmt.relativeDay(latest.timestamp.millisToEpochDay()))
                 StatTile(
                     "Cambio",
-                    change?.let { "${Fmt.signed(it, d.coerceAtLeast(1))} ${type.unit}" } ?: "—",
+                    change?.let { type.delta(it, pet) } ?: "—",
                     Modifier.weight(1f), sub = rangeText, valueColor = changeColor,
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatTile("Promedio", s1?.let { "${Fmt.num(it.avg, d.coerceAtLeast(1))} ${type.unit}" } ?: "—", Modifier.weight(1f), sub = rangeText)
-                StatTile("Mín – máx", s1?.let { minMax(it.min, it.max, d) } ?: "—", Modifier.weight(1f), sub = type.unit)
+                val mm = s1?.let { rangeText(type, it.min, it.max, pet) }
+                StatTile("Promedio", s1?.let { type.amount(it.avg, pet, d.coerceAtLeast(1)) } ?: "—", Modifier.weight(1f), sub = rangeText)
+                StatTile("Mín – máx", mm?.first ?: "—", Modifier.weight(1f), sub = mm?.second ?: type.unit)
             }
             if (type == MeasureType.WEIGHT) {
                 val reg = remember(inRange) { MeasureStats.points(inRange).takeIf { it.size >= 3 }?.let { MeasureStats.regression(it) } }
-                val bmi = MeasureStats.bmi(latest.value, heightCm)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatTile(
                         "Ritmo",
-                        reg?.let { "${Fmt.signed(it.perWeek, 2)} kg/sem" } ?: "—",
+                        reg?.let { if (pet) "${MeasureRefs.weightDelta(it.perWeek, true)}/sem" else "${Fmt.signed(it.perWeek, 2)} kg/sem" } ?: "—",
                         Modifier.weight(1f), sub = "tendencia, $rangeText",
                     )
-                    StatTile(
-                        "IMC",
-                        bmi?.let { Fmt.num(it, 1) } ?: "—",
-                        Modifier.weight(1f),
-                        sub = bmi?.let { MeasureStats.bmiCategory(it).label } ?: "falta tu estatura",
-                        valueColor = bmi?.let { MeasureStats.bmiCategory(it).level.color() } ?: MaterialTheme.colorScheme.onSurface,
-                    )
+                    if (MeasureRefs.showBmi(who)) {
+                        val bmi = MeasureStats.bmi(latest.value, heightCm)
+                        // La categoría de la OMS es para personas adultas; en menores solo se muestra el número.
+                        val category = bmi?.takeIf { MeasureRefs.showBmiCategory(who) }?.let { MeasureStats.bmiCategory(it) }
+                        StatTile(
+                            "IMC",
+                            bmi?.let { Fmt.num(it, 1) } ?: "—",
+                            Modifier.weight(1f),
+                            sub = when {
+                                bmi == null -> "falta la estatura"
+                                category != null -> category.label
+                                else -> "se interpreta por edad"
+                            },
+                            valueColor = category?.level?.color() ?: MaterialTheme.colorScheme.onSurface,
+                        )
+                    } else {
+                        StatTile("Registros", "${inRange.size}", Modifier.weight(1f), sub = rangeText)
+                    }
                 }
             }
         }
     }
 }
 
+/** Nota orientativa propia del perfil (especie de la mascota, o aviso de que en menores no se clasifica). */
 @Composable
-private fun AssessmentCard(type: MeasureType, latest: Measurement, a: Assessment) {
+private fun ReferenceNoteCard(note: String) {
+    SectionCard(title = "Referencia") {
+        Text(note, style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(10.dp))
+        InfoNote("Es solo una orientación; no sustituye la valoración de un profesional.")
+    }
+}
+
+@Composable
+private fun AssessmentCard(type: MeasureType, latest: Measurement, a: Assessment, who: MeasureWho) {
     SectionCard(title = "Última medición") {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(type.valueWithUnit(latest), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
@@ -450,20 +531,25 @@ private fun AssessmentCard(type: MeasureType, latest: Measurement, a: Assessment
             Text(a.detail, style = MaterialTheme.typography.bodyMedium)
         }
         Spacer(Modifier.height(10.dp))
-        InfoNote("Referencia orientativa para personas adultas; no es un diagnóstico. Tu médico puede indicarte otros valores objetivo.")
+        InfoNote(
+            if (who.isMinor) "Referencia orientativa, no un diagnóstico. En niñas, niños y adolescentes coméntalo con su pediatra."
+            else "Referencia orientativa para personas adultas; no es un diagnóstico. Tu médico puede indicarte otros valores objetivo.",
+        )
     }
 }
 
 @Composable
-private fun GoalCard(asc: List<Measurement>, goal: Double?, onEdit: () -> Unit) {
+private fun GoalCard(asc: List<Measurement>, goal: Double?, who: MeasureWho, onEdit: () -> Unit) {
     val colors = SaviaTheme.colors
+    val pet = who.isPet
     SectionCard(
         title = "Meta de peso",
         action = if (goal != null) ({ TextButton(onClick = onEdit) { Text("Editar") } }) else null,
     ) {
         if (goal == null) {
             Text(
-                "Define una meta para ver cuánto te falta y una fecha estimada según tu tendencia.",
+                if (pet) "Si tu veterinario te indicó un peso ideal, defínelo como meta para ver cuánto le falta y una fecha estimada según su tendencia."
+                else "Define una meta para ver cuánto te falta y una fecha estimada según tu tendencia.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -482,9 +568,9 @@ private fun GoalCard(asc: List<Measurement>, goal: Double?, onEdit: () -> Unit) 
             pts.filter { it.x >= last.x - 60 }.takeIf { it.size >= 3 }?.let { MeasureStats.regression(it) }?.perWeek
         }
         Row(verticalAlignment = Alignment.Bottom) {
-            Text("${Fmt.num(goal, 1)} kg", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(MeasureRefs.weightText(goal, pet), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text(
-                if (reached) "¡Meta alcanzada!" else "Te faltan ${Fmt.num(abs(goal - current), 1)} kg",
+                if (reached) "¡Meta alcanzada!" else "${if (pet) "Le" else "Te"} faltan ${MeasureRefs.weightText(abs(goal - current), pet)}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = if (reached) colors.good else MaterialTheme.colorScheme.primary,
@@ -501,17 +587,19 @@ private fun GoalCard(asc: List<Measurement>, goal: Double?, onEdit: () -> Unit) 
         )
         Spacer(Modifier.height(4.dp))
         Row {
-            Text("Inicio ${Fmt.num(first, 1)} kg", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            Text("Actual ${Fmt.num(current, 1)} kg", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Inicio ${MeasureRefs.weightText(first, pet)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text("Actual ${MeasureRefs.weightText(current, pet)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(10.dp))
         val message = when {
-            reached -> "Llegaste a tu meta. Puedes mantenerla o definir una nueva."
+            reached -> if (pet) "Llegó a su meta. Puedes mantenerla o definir una nueva." else "Llegaste a tu meta. Puedes mantenerla o definir una nueva."
             projection != null && projection.daysLeft > 0 -> {
-                val rate = recentRate?.let { " (${Fmt.signed(it, 2)} kg por semana)" } ?: ""
-                "A tu ritmo reciente$rate llegarías alrededor del ${Fmt.date(projection.epochDay)}, ${Fmt.daysFromNow(projection.epochDay)}."
+                val rate = recentRate?.let { if (pet) " (${MeasureRefs.weightDelta(it, true)} por semana)" else " (${Fmt.signed(it, 2)} kg por semana)" } ?: ""
+                if (pet) "A su ritmo reciente$rate llegaría alrededor del ${Fmt.date(projection.epochDay)}, ${Fmt.daysFromNow(projection.epochDay)}."
+                else "A tu ritmo reciente$rate llegarías alrededor del ${Fmt.date(projection.epochDay)}, ${Fmt.daysFromNow(projection.epochDay)}."
             }
-            pts.size < 3 -> "Registra tu peso varias veces para estimar una fecha."
+            pts.size < 3 -> if (pet) "Registra su peso varias veces para estimar una fecha." else "Registra tu peso varias veces para estimar una fecha."
+            pet -> "Con la tendencia de las últimas semanas no se está acercando a la meta, así que no hay fecha estimada."
             else -> "Con la tendencia de las últimas semanas no te estás acercando a la meta, así que no hay fecha estimada."
         }
         Text(message, style = MaterialTheme.typography.bodyMedium)
@@ -527,7 +615,7 @@ private fun GoalCard(asc: List<Measurement>, goal: Double?, onEdit: () -> Unit) 
 }
 
 @Composable
-private fun BmiCard(latest: Measurement, heightCm: Double?, onEditHeight: () -> Unit) {
+private fun BmiCard(latest: Measurement, heightCm: Double?, who: MeasureWho, onEditHeight: () -> Unit) {
     SectionCard(
         title = "Índice de masa corporal",
         action = if (heightCm != null) ({ TextButton(onClick = onEditHeight) { Text("Estatura") } }) else null,
@@ -535,12 +623,25 @@ private fun BmiCard(latest: Measurement, heightCm: Double?, onEditHeight: () -> 
         val bmi = MeasureStats.bmi(latest.value, heightCm)
         if (bmi == null || heightCm == null) {
             Text(
-                "Agrega tu estatura para calcular tu IMC a partir de tu peso.",
+                if (who.isMinor) "Agrega su estatura para calcular el IMC a partir del peso."
+                else "Agrega tu estatura para calcular tu IMC a partir de tu peso.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(10.dp))
             OutlinedButton(onClick = onEditHeight) { Text("Agregar estatura") }
+            return@SectionCard
+        }
+        if (!MeasureRefs.showBmiCategory(who)) {
+            // Menores de edad: el número sí, pero sin categorías ni "peso saludable" de personas adultas.
+            Text(Fmt.num(bmi, 1), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Con ${Fmt.num(latest.value, 1)} kg y ${Fmt.num(heightCm, 1)} cm de estatura.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(10.dp))
+            InfoNote(MeasureRefs.MINOR_BMI_NOTE)
             return@SectionCard
         }
         val a = MeasureStats.bmiCategory(bmi)
@@ -566,7 +667,7 @@ private fun BmiCard(latest: Measurement, heightCm: Double?, onEditHeight: () -> 
 }
 
 @Composable
-private fun HistoryRow(type: MeasureType, m: Measurement, assessment: Assessment?, delta: Double?, onClick: () -> Unit) {
+private fun HistoryRow(type: MeasureType, m: Measurement, assessment: Assessment?, delta: Double?, isPet: Boolean, onClick: () -> Unit) {
     SectionCard(onClick = onClick, contentPadding = 12.dp) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -582,9 +683,9 @@ private fun HistoryRow(type: MeasureType, m: Measurement, assessment: Assessment
             }
             if (assessment != null) {
                 Pill(assessment.label, assessment.level.color())
-            } else if (delta != null && abs(delta) >= 0.05) {
+            } else if (delta != null && abs(delta) >= (if (isPet && type == MeasureType.WEIGHT) 0.0005 else 0.05)) {
                 Text(
-                    Fmt.signed(delta, type.decimals.coerceAtLeast(1)),
+                    if (isPet && type == MeasureType.WEIGHT) MeasureRefs.weightDelta(delta, true) else Fmt.signed(delta, type.decimals.coerceAtLeast(1)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

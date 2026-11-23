@@ -288,10 +288,11 @@ object MeasureStats {
     // ---------- Validación de captura ----------
 
     /** Devuelve un mensaje de error para mostrar, o null si la captura es válida. */
-    fun validate(type: MeasureType, value: Double?, value2: Double?, timestamp: Long, now: Long): String? {
+    fun validate(type: MeasureType, value: Double?, value2: Double?, timestamp: Long, now: Long, isPet: Boolean = false): String? {
         if (value == null) return "Escribe un valor para ${type.valueLabel.lowercase()}."
-        if (value < type.min || value > type.max) {
-            return "${type.valueLabel}: el valor debe estar entre ${Fmt.num(type.min, 1)} y ${Fmt.num(type.max, 1)} ${type.unit}."
+        val min = MeasureRefs.minValue(type, isPet)
+        if (value < min || value > type.max) {
+            return "${type.valueLabel}: el valor debe estar entre ${Fmt.num(min, 2)} y ${Fmt.num(type.max, 1)} ${type.unit}."
         }
         if (type.secondLabel != null) {
             if (value2 == null) return "Escribe también la ${type.secondLabel.lowercase()}."

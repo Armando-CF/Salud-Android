@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import app.savia.Savia
+import app.savia.ui.wellbeing.PeopleOnlyScreen
 import app.savia.cycle.DayInfo
 import app.savia.data.CycleCatalog
 import app.savia.data.CycleDay
@@ -81,6 +82,10 @@ private const val KEY_END_ACK = "period_end_ack_day"
 
 @Composable
 fun CycleScreen(nav: NavController, onBack: (() -> Unit)?) {
+    if (Savia.isPet) {
+        PeopleOnlyScreen("Ciclo menstrual", onBack)
+        return
+    }
     val state = rememberCycleState()
     val showFert by Savia.prefs.showFertility.flow.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -272,7 +277,8 @@ private fun FirstTimeCard(onPickStart: () -> Unit, onEdit: () -> Unit) {
 private fun QuickActionsCard(state: CycleUiState, context: Context, onLogToday: () -> Unit) {
     val today = state.today
     val rec = state.byDay[today]
-    val sp = remember { context.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE) }
+    // Preferencias de interfaz separadas por perfil ("savia_cycle_ui" para el perfil 1, "savia_cycle_ui_p<N>" para los demás).
+    val sp = remember { context.getSharedPreferences(UI_PREFS + Savia.profileSuffix(), Context.MODE_PRIVATE) }
     var ackDay by remember { mutableLongStateOf(sp.getLong(KEY_END_ACK, -1L)) }
     var quick = CycleLogic.quickState(state.analysis, rec)
     if (quick == QuickState.CONTINUE && ackDay == today) quick = QuickState.START
