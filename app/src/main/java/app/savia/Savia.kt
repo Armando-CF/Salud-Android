@@ -7,6 +7,7 @@ import app.savia.data.Profile
 import app.savia.data.ProfileInfo
 import app.savia.data.ProfileStore
 import app.savia.data.SaviaDb
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +15,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -115,9 +118,17 @@ object Savia {
         val s = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, _ -> })
         watcher = s
         s.launch {
-            summaries.collect { list ->
-                for (i in list) { infoById[i.id] = i; profiles.cacheInfo(i) }
-                list.firstOrNull { it.id == profiles.activeId.value }?.let { _active.value = it }
+            while (isActive) {
+                try {
+                    summaries.collect { list ->
+                        for (i in list) { infoById[i.id] = i; profiles.cacheInfo(i) }
+                        list.firstOrNull { it.id == profiles.activeId.value }?.let { _active.value = it }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    delay(250) // p. ej. se eliminó un perfil a media consulta: se vuelve a observar
+                }
             }
         }
     }
