@@ -38,7 +38,7 @@ export async function writeIdb(page, dbName, stores) {
  */
 export async function withApp(opts, fn) {
   const port = opts.port ?? 4300 + Math.floor(Math.random() * 500)
-  const server = await serve(port, BASE)
+  const server = await serve(port, BASE, opts.dir)
   const browser = await chromium.launch()
   const context = await browser.newContext({ ...devices['iPhone 14'], colorScheme: opts.dark ? 'dark' : 'light', locale: 'es-MX' }) // misma zona horaria que Node: los datos de ejemplo se calculan aquí
   const page = await context.newPage()

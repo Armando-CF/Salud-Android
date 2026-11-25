@@ -1,0 +1,8 @@
+.en-total { font-size: 38px; font-weight: 800; line-height: 1.1; letter-spacing: -0.01em; }
+.en-level { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 14px; }
+.en-level.on { background: var(--secondary-container); color: var(--on-secondary-container); }
+.en-level .t { font-weight: 600; }
+.en-part { display: flex; flex-direction: column; gap: 4px; }
+.en-bar { height: 10px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.en-bar > div { height: 100%; border-radius: 999px; }
+.en-result { font-size: 26px; font-weight: 800; }

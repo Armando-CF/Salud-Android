@@ -5,11 +5,15 @@ import { VitePWA } from 'vite-plugin-pwa'
 // base relativa: la app funciona igual en https://usuario.github.io/<repositorio>/ que en la raíz de un dominio.
 export default defineConfig({
   base: './',
+  // Identificador de compilación (para saber qué versión está corriendo).
+  define: { __BUILD_ID__: JSON.stringify(new Date().toISOString()) },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // 'prompt': cuando hay versión nueva la app muestra "Hay una versión nueva · Actualizar" (ver UpdatePrompt en App.tsx).
+      // Si no se toca, la versión nueva entra sola la próxima vez que la app se abre desde cero.
+      registerType: 'prompt',
+      injectRegister: false,
       manifestFilename: 'manifest.json',
       includeAssets: ['favicon.svg', 'atlas.json', 'icons/*.png'],
       manifest: {

@@ -16,6 +16,8 @@ export const PREF_DEFAULTS = {
   showFertility: true,
   /** Modelo del atlas corporal: "F" o "M". */
   atlasSex: 'F' as string,
+  /** Nivel de actividad física para estimar el gasto de energía: clave de ACTIVITY_LEVELS o "" si no se ha elegido. */
+  activityLevel: '' as string,
 }
 export type PrefKey = keyof typeof PREF_DEFAULTS
 export type PrefValue<K extends PrefKey> = (typeof PREF_DEFAULTS)[K]

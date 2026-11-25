@@ -11,6 +11,12 @@ citas, vacunas, bienestar, autoexploración y respaldos.
 2. Toca el botón **Compartir** y elige **“Agregar a inicio”**.
 3. Ábrela desde el icono: funciona a pantalla completa y **sin conexión**.
 
+## Actualizaciones
+
+Cuando se publica una versión nueva, la app instalada la detecta al abrirse (y al volver a primer
+plano) y muestra **“Hay una versión nueva · Actualizar”**. Si no se toca, la versión nueva entra sola
+la próxima vez que la app se abre desde cero. Los datos no se tocan al actualizar.
+
 ## Privacidad y datos
 
 - No hay servidores, cuentas ni rastreo: todo se guarda en **IndexedDB**, dentro del dispositivo.

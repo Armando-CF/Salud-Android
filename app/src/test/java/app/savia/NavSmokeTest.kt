@@ -77,7 +77,7 @@ class NavSmokeTest {
         for (tab in listOf("Síntomas", "Ciclo", "Cuerpo", "Más", "Hoy")) tap(tab)
         tap("Más")
         val rows = listOf(
-            "Mediciones" to "Peso", "Bienestar diario" to "Bienestar", "Medicamentos" to "Loratadina", "Citas médicas" to "Revisión anual",
+            "Mediciones" to "Peso", "Gasto de energía" to "Tu gasto diario aproximado", "Bienestar diario" to "Bienestar", "Medicamentos" to "Loratadina", "Citas médicas" to "Revisión anual",
             "Estudios y chequeos" to "Química sanguínea", "Autoexploración" to "Autoexploración", "Mi ficha" to "Alex",
             "Exportar y respaldo" to "Exportar", "Ajustes" to "Ajustes",
         )

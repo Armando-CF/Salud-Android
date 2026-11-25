@@ -37,6 +37,7 @@ import app.savia.ui.cycle.CycleDayScreen
 import app.savia.ui.cycle.CycleScreen
 import app.savia.ui.cycle.CycleSettingsScreen
 import app.savia.ui.cycle.CycleStatsScreen
+import app.savia.ui.energy.EnergyScreen
 import app.savia.ui.export.ExportScreen
 import app.savia.ui.home.HomeScreen
 import app.savia.ui.home.MoreScreen
@@ -186,6 +187,7 @@ fun AppNav() {
                     NewProfileScreen(nav, kind = e.arguments?.getString("kind") ?: "person")
                 }
                 composable(Routes.VACCINES) { VaccinesScreen(nav) }
+                composable(Routes.ENERGY) { EnergyScreen(nav) }
                 composable("vaccine_edit?id={id}", arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = -1L })) { e ->
                     VaccineEditScreen(nav, id = e.arguments?.getLong("id")?.takeIf { it > 0 })
                 }

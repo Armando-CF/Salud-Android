@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.runtime.produceState
@@ -83,7 +84,11 @@ import app.savia.ui.components.Pill
 import app.savia.ui.components.SaviaScaffold
 import app.savia.ui.components.SectionCard
 import app.savia.ui.components.Sparkline
+import app.savia.energy.EnergyCalc
 import app.savia.ui.cycle.CycleSummaryCard
+import app.savia.ui.energy.EnergyInputs
+import app.savia.ui.energy.effectiveLevel
+import app.savia.ui.energy.kcalText
 import app.savia.ui.cycle.rememberCycleState
 import app.savia.ui.measure.MeasureRefs
 import app.savia.ui.measure.MeasureStats
@@ -302,6 +307,27 @@ fun HomeScreen(nav: NavController) {
                 }
             }
 
+            // Gasto de energía (solo si ya se eligió o se pudo sugerir un nivel de actividad)
+            if (!isPet) {
+                val energyLogs by remember { db.dailyLogs().observeAll() }.collectAsStateWithLifecycle(initialValue = emptyList())
+                val energyLevelKey by Savia.prefs.activityLevel.flow.collectAsStateWithLifecycle()
+                val energyBmr = EnergyInputs.of(profile, weights).bmr
+                val energyLevel = effectiveLevel(energyLevelKey, energyLogs, t).first
+                if (energyBmr != null && energyLevel != null) {
+                    SectionCard(onClick = { nav.navigate(Routes.ENERGY) }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconBadge(Icons.Filled.LocalFireDepartment, SaviaTheme.colors.bad)
+                            Spacer(Modifier.width(14.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Gasto diario aproximado", style = MaterialTheme.typography.labelMedium, color = SaviaTheme.colors.bad, fontWeight = FontWeight.SemiBold)
+                                Text("${kcalText(EnergyCalc.tdee(energyBmr, energyLevel))} kcal", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                                Text("Actividad: ${energyLevel.label.lowercase()} · basal ${kcalText(energyBmr)} kcal", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+
             // Síntomas recientes
             if (symptoms.isNotEmpty()) {
                 SectionCard(
@@ -481,6 +507,7 @@ fun MoreScreen(nav: NavController) {
                     }
                 }
                 NavRow(Icons.Filled.Vaccines, if (isPet) "Vacunas y desparasitación" else "Vacunas", { nav.navigate(Routes.VACCINES) }, subtitle = if (isPet) "Cartilla, próximas aplicaciones y recordatorios" else "Cartilla de vacunación y próximos refuerzos", iconTint = SaviaTheme.colors.good)
+                if (!isPet) NavRow(Icons.Filled.LocalFireDepartment, "Gasto de energía", { nav.navigate(Routes.ENERGY) }, subtitle = "Cuánto quemas al día y en cada ejercicio", iconTint = SaviaTheme.colors.bad)
                 if (!isPet) NavRow(Icons.Filled.Mood, "Bienestar diario", { nav.navigate(Routes.WELLBEING) }, subtitle = "Ánimo, energía, sueño, agua y ejercicio", iconTint = SaviaTheme.colors.warn)
                 NavRow(Icons.Filled.Medication, "Medicamentos", { nav.navigate(Routes.MEDS) }, subtitle = "Tomas del día y recordatorios", iconTint = SaviaTheme.colors.chart[0])
                 NavRow(Icons.Filled.Event, if (isPet) "Citas con el veterinario" else "Citas médicas", { nav.navigate(Routes.APPOINTMENTS) }, subtitle = "Próximas consultas y recordatorios", iconTint = MaterialTheme.colorScheme.tertiary)

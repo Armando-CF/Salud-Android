@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { registerSW } from 'virtual:pwa-register'
 import { HashRouter, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { CalendarDays, Droplet, LayoutGrid, NotebookPen, PersonStanding, Scale } from 'lucide-react'
@@ -18,6 +19,7 @@ import { VaccineEditPage, VaccinesPage } from './modules/vaccines'
 import { AtlasPage } from './modules/atlas'
 import { LockGate, NewProfilePage, Onboarding, ProfilePage, ProfilesPage, SettingsPage } from './modules/profile'
 import { ExportPage } from './modules/backup'
+import { EnergyPage } from './modules/energy'
 
 function Splash() {
   return (
@@ -59,6 +61,7 @@ export default function App() {
   return (
     <div className="app">
       <ToastProvider>
+        <UpdatePrompt />
         {!ready || activeId === undefined || onboarded === undefined ? (
           <Splash />
         ) : !onboarded ? (
@@ -70,6 +73,36 @@ export default function App() {
           </LockGate>
         )}
       </ToastProvider>
+    </div>
+  )
+}
+
+/**
+ * Registra el service worker y avisa cuando hay una versión nueva publicada.
+ * La app revisa si hay actualización al abrirse, al volver a primer plano y cada hora.
+ * Los datos (IndexedDB) no se tocan al actualizar.
+ */
+function UpdatePrompt() {
+  const [ready, setReady] = useState(false)
+  const update = useRef<(reload?: boolean) => Promise<void>>()
+  useEffect(() => {
+    let reg: ServiceWorkerRegistration | undefined
+    update.current = registerSW({
+      immediate: true,
+      onNeedRefresh: () => setReady(true),
+      onRegisteredSW: (_url, r) => { reg = r },
+    })
+    const check = () => { if (document.visibilityState === 'visible') reg?.update().catch(() => {}) }
+    document.addEventListener('visibilitychange', check)
+    const timer = window.setInterval(check, 60 * 60 * 1000)
+    return () => { document.removeEventListener('visibilitychange', check); window.clearInterval(timer) }
+  }, [])
+  if (!ready) return null
+  return (
+    <div className="update-bar" role="status">
+      <span className="grow">Hay una versión nueva de Savia.</span>
+      <button className="btn small tonal" onClick={() => { void update.current?.(true) }}>Actualizar</button>
+      <button className="btn small text" style={{ color: 'inherit' }} onClick={() => setReady(false)}>Luego</button>
     </div>
   )
 }
@@ -145,6 +178,7 @@ function Shell() {
         <Route path="/ficha" element={<ProfilePage />} />
         <Route path="/perfiles" element={<ProfilesPage />} />
         <Route path="/perfiles/nuevo/:kind" element={<NewProfilePage />} />
+        <Route path="/energia" element={<EnergyPage />} />
         <Route path="/exportar" element={<ExportPage />} />
         <Route path="/ajustes" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

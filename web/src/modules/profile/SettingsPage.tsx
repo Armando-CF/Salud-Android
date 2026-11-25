@@ -211,7 +211,7 @@ export function SettingsPage() {
           <img src="./favicon.svg" width={52} height={52} alt="" style={{ borderRadius: 14 }} />
           <div className="grow">
             <div style={{ fontSize: 21, fontWeight: 700 }}>Savia</div>
-            <div className="muted">Versión web {pkg.version}</div>
+            <div className="muted">Versión web {pkg.version} · compilada el {__BUILD_ID__.slice(0, 10)}</div>
           </div>
         </div>
         <InfoNote>

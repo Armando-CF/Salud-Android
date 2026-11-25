@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import {
-  Angry, CalendarClock, Check, ChevronDown, ChevronRight, ClipboardCheck, Download, Droplet, FlaskConical, Frown, HeartPulse, Laugh,
+  Angry, CalendarClock, Check, ChevronDown, Flame, ChevronRight, ClipboardCheck, Download, Droplet, FlaskConical, Frown, HeartPulse, Laugh,
   Meh, NotebookPen, PersonStanding, Pill as PillIcon, Scale, Settings, Share, Smile, Syringe, UserRound, Users, X, type LucideIcon,
 } from 'lucide-react'
 import { AVATAR_COLORS, PetSpecies, VaccinationTypes } from '../../data/catalogs'
@@ -15,6 +15,7 @@ import { Fmt, millisToEpochDay, nowMillis, today } from '../../lib/dates'
 import { isIos, isStandalone } from '../../lib/files'
 import { Avatar, Card, IconButton, NavRow, Page, PawIcon, Sparkline, intensityColor } from '../../ui'
 import { CycleSummaryCard } from '../cycle'
+import { EnergyHomeCard } from '../energy'
 import { upcomingFollowUps } from '../studies'
 import { dosesForDay, takeDose, undoDose } from '../meds'
 import { VaccineLogic } from '../vaccines'
@@ -223,6 +224,8 @@ export function HomePage() {
         </Card>
       )}
 
+      {!isPet && <EnergyHomeCard />}
+
       {symptoms.length > 0 && (
         <Card title="Síntomas recientes" action={<button className="btn text small" onClick={() => nav('/sintomas')}>Ver todos</button>}>
           {symptoms.map((s) => (
@@ -343,6 +346,7 @@ export function MorePage() {
           ? <NavRow icon={Scale} title="Mediciones" subtitle="Peso, estatura, presión, glucosa…" color="var(--chart-3)" onClick={() => nav('/mediciones')} />
           : <NavRow icon={Droplet} title="Ciclo menstrual" subtitle="Activa el seguimiento del periodo" color="var(--period)" onClick={() => nav('/ciclo/ajustes')} />)}
         <NavRow icon={Syringe} title={isPet ? 'Vacunas y desparasitación' : 'Vacunas'} subtitle={isPet ? 'Cartilla y próximas aplicaciones' : 'Cartilla de vacunación y próximos refuerzos'} color="var(--good)" onClick={() => nav('/vacunas')} />
+        {!isPet && <NavRow icon={Flame} title="Gasto de energía" subtitle="Cuánto quemas al día y en cada ejercicio" color="var(--bad)" onClick={() => nav('/energia')} />}
         {!isPet && <NavRow icon={Smile} title="Bienestar diario" subtitle="Ánimo, energía, sueño, agua y ejercicio" color="var(--warn)" onClick={() => nav('/bienestar')} />}
         <NavRow icon={PillIcon} title="Medicamentos" subtitle="Tomas del día y tratamientos" color="var(--chart-1)" onClick={() => nav('/medicamentos')} />
         <NavRow icon={CalendarClock} title={isPet ? 'Citas con el veterinario' : 'Citas médicas'} subtitle="Próximas consultas" color="var(--tertiary)" onClick={() => nav('/citas')} />

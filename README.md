@@ -25,6 +25,7 @@ Hay dos versiones con las mismas funciones:
 | **Mediciones** | Peso con tendencia, media móvil, meta e IMC; presión arterial, frecuencia cardiaca, glucosa, temperatura, oxigenación, cintura, cadera y grasa corporal. |
 | **Estudios y chequeos** | Resultados de laboratorio con rangos de referencia, evolución de cada parámetro en el tiempo, adjuntos (fotos/PDF) y fechas de seguimiento. |
 | **Medicamentos y citas** | Tomas del día, adherencia, citas médicas y recordatorios con notificaciones. |
+| **Gasto de energía** | Estimación automática de cuánto quemas al día: metabolismo basal (Mifflin-St Jeor) con tu peso, estatura, edad y sexo; total según tu nivel de actividad (sugerido a partir del ejercicio registrado); reparto en basal, movimiento y digestión; lectura de tu tendencia de peso y calculadora de ejercicios con METs. |
 | **Bienestar diario** | Ánimo, energía, estrés, sueño, agua y ejercicio, con tendencias. |
 | **Autoexploración** | Registro y guía de autoexploración mamaria, testicular y de piel. |
 | **Mi ficha** | Datos médicos básicos: tipo de sangre, alergias, padecimientos, contacto de emergencia. |

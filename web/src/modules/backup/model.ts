@@ -427,7 +427,7 @@ export type ProfilePrefs = Partial<Record<PrefKey, unknown>>
 /** Clave web ↔ clave de Android (SharedPreferences). */
 const ANDROID_PREF: Record<PrefKey, string> = {
   cycleEnabled: 'cycle_enabled', cycleLength: 'cycle_length', periodLength: 'period_length', lutealLength: 'luteal_length',
-  showFertility: 'show_fertility', atlasSex: 'atlas_sex',
+  showFertility: 'show_fertility', atlasSex: 'atlas_sex', activityLevel: 'activity_level',
 }
 
 /** Lee ajustes de perfil de un objeto que puede traer claves web o de Android; ignora lo desconocido y los tipos incorrectos. */

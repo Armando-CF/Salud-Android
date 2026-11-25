@@ -30,7 +30,7 @@ const dump = (page) => page.evaluate(async () => {
     const prefs = Object.fromEntries((await all(db, 'prefs')).map((r) => [r.key, r.value]))
     const att = (await all(db, 'studyAttachments')).map((a) => [a.displayName, a.data ? a.data.byteLength : -1])
     db.close()
-    const defaults = { cycleEnabled: false, cycleLength: 28, periodLength: 5, lutealLength: 14, showFertility: true, atlasSex: 'F' }
+    const defaults = { cycleEnabled: false, cycleLength: 28, periodLength: 5, lutealLength: 14, showFertility: true, atlasSex: 'F', activityLevel: '' }
     profiles.push({ id, name: p?.name, kind: p?.kind, species: p?.species, counts, prefs: { ...defaults, ...prefs }, att })
   }
   return { profiles, activeProfile: kv.activeProfile ?? 1, lastBackup: kv.lastBackup ?? 0, hasSafety: !!kv['backup.safety'] }

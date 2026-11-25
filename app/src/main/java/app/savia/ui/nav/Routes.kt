@@ -27,6 +27,9 @@ object Routes {
     const val PROFILES = "profiles"
     const val VACCINES = "vaccines"
 
+    /** Gasto de energía aproximado (metabolismo basal, actividad, ejercicio). */
+    const val ENERGY = "energy"
+
     /** Clave en savedStateHandle donde el atlas deja la zona elegida como "id|Nombre". */
     const val RESULT_REGION = "picked_region"
 

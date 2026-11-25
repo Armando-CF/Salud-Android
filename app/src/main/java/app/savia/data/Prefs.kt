@@ -94,9 +94,12 @@ class Prefs(context: Context, fileName: String = FILE, global: GlobalPrefs? = nu
     /** Recordatorio mensual de autoexploración. */
     val selfExamReminder = bool("self_exam_reminder", false)
 
+    /** Nivel de actividad física para estimar el gasto de energía: clave de ActivityLevel o "" si no se ha elegido. */
+    val activityLevel = str("activity_level", "")
+
     /** Ajustes propios de este perfil. */
     val profileScoped: List<Pref<*>> = listOf(
-        cycleEnabled, cycleLength, periodLength, lutealLength, showFertility, periodReminder, atlasSex, selfExamReminder,
+        cycleEnabled, cycleLength, periodLength, lutealLength, showFertility, periodReminder, atlasSex, selfExamReminder, activityLevel,
     )
 
     val all: List<Pref<*>> get() = listOf(onboardingDone, themeMode, appLock) + profileScoped
